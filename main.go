@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
 	"path"
 
 	"github.com/garryfan2013/goget/client"
@@ -22,25 +23,51 @@ import (
 const (
 	Version          = "1.0.0"
 	DefaultTaskCount = 5
+
+	SchemeHttp  = "http"
+	SchemeHttps = "https"
+	SchemeFtp   = "ftp"
 )
 
 var (
 	printHelp bool
 	taskCount int
 	savePath  string
+	userName  string
+	passwd    string
 )
 
 func init() {
 	flag.BoolVar(&printHelp, "h", false, "Printf help messages")
 	flag.IntVar(&taskCount, "c", DefaultTaskCount, "Multi-task count for concurrent downloading")
 	flag.StringVar(&savePath, "o", "./", "The specified download file saved path")
+	flag.StringVar(&userName, "u", "", "username for authentication")
+	flag.StringVar(&passwd, "p", "", "passwd for authentication")
 }
 
 func usage() {
 	fmt.Printf("goget version: %s\n", Version)
-	fmt.Printf("Usage: goget [-h] [-o save_file_path] [-c task_count] remote_url\n\n")
+	fmt.Printf("Usage: goget [-h] [-o save_file_path] [-c task_count] [-u username] [-p passwd] remote_url\n\n")
 	fmt.Printf("Options:\n")
 	flag.PrintDefaults()
+}
+
+func getProtocol(urlStr string) (int, error) {
+	fmtUrl, err := url.Parse(urlStr)
+	if err != nil {
+		return -1, err
+	}
+
+	switch fmtUrl.Scheme {
+	case SchemeHttp:
+	case SchemeHttps:
+		return client.HttpProtocol, nil
+	case SchemeFtp:
+		return client.FtpProtocol, nil
+	default:
+	}
+
+	return -1, fmt.Errorf("Unsupported url scheme: %s", fmtUrl)
 }
 
 func main() {
@@ -54,8 +81,8 @@ func main() {
 		return
 	}
 
-	var url string
-	if url = flag.Arg(0); url == "" {
+	var urlStr string
+	if urlStr = flag.Arg(0); urlStr == "" {
 		usage()
 		return
 	}
@@ -68,19 +95,31 @@ func main() {
 		return
 	}
 
-	source, err := client.NewCrawler(client.HttpProtocol)
+	var source client.Crawler
+	var sink record.Handler
+	var controller manage.Controller
+	var err error
+	var protocol int
+
+	protocol, err = getProtocol(urlStr)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	sink, err := record.NewHandler(record.LocalFileType)
+	source, err = client.NewCrawler(protocol)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	controller, err := manage.NewController(manage.MultiTaskType)
+	sink, err = record.NewHandler(record.LocalFileType)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	controller, err = manage.NewController(manage.MultiTaskType)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -93,12 +132,17 @@ func main() {
 		return
 	}
 
-	fileName := path.Base(url)
-	savePath := fmt.Sprintf("%s/%s", savePath, fileName)
+	savePath := fmt.Sprintf("%s/%s", savePath, path.Base(urlStr))
 
-	controller.SetConfig(config.KeyRemoteUrl, url)
+	controller.SetConfig(config.KeyRemoteUrl, urlStr)
 	controller.SetConfig(config.KeyLocalPath, savePath)
 	controller.SetConfig(config.KeyTaskCount, fmt.Sprintf("%d", taskCount))
+	if userName != "" {
+		controller.SetConfig(config.KeyUserName, userName)
+	}
+	if passwd != "" {
+		controller.SetConfig(config.KeyPasswd, passwd)
+	}
 
 	if err = controller.Start(); err != nil {
 		fmt.Println(err)

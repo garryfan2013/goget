@@ -6,4 +6,6 @@ const (
 	KeyTaskBlockSize = "TaskBlockSize"
 	KeyRemoteUrl     = "RemoteUrl"
 	KeyLocalPath     = "LocalPath"
+	KeyUserName      = "UserName"
+	KeyPasswd        = "Passwd"
 )
