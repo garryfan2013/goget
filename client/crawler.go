@@ -3,11 +3,13 @@ package client
 import (
 	"errors"
 
+	"github.com/garryfan2013/goget/client/ftp"
 	"github.com/garryfan2013/goget/client/http"
 )
 
 const (
 	HttpProtocol = 0
+	FtpProtocol  = 1
 )
 
 type Crawler interface {
@@ -32,11 +34,24 @@ var (
 				var err error
 				c, err = http.NewHttpCrawler()
 				return c, err
+			}},
+
+		CrawlerFactory{
+			Protocol: FtpProtocol,
+			Create: func() (Crawler, error) {
+				var c Crawler
+				var err error
+				c, err = ftp.NewFtpCrawler()
+				return c, err
 			}}}
 )
 
 func NewCrawler(proto int) (Crawler, error) {
-	if proto != HttpProtocol {
+	if proto < HttpProtocol {
+		return nil, errors.New("Unsupported protocol")
+	}
+
+	if proto > FtpProtocol {
 		return nil, errors.New("Unsupported protocol")
 	}
 

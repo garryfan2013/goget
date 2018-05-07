@@ -88,8 +88,15 @@ func (mc *MultiTaskController) Start() error {
 	if err := mc.Source.Open(url); err != nil {
 		return err
 	}
-
 	defer mc.Source.Close()
+
+	if user, exists := mc.Configs[config.KeyUserName]; exists {
+		mc.Source.SetConfig(config.KeyUserName, user)
+	}
+
+	if passwd, exists := mc.Configs[config.KeyPasswd]; exists {
+		mc.Source.SetConfig(config.KeyPasswd, passwd)
+	}
 
 	path, exists := mc.Configs[config.KeyLocalPath]
 	if exists == false {
@@ -99,7 +106,6 @@ func (mc *MultiTaskController) Start() error {
 	if err := mc.Sink.Open(path); err != nil {
 		return err
 	}
-
 	defer mc.Sink.Close()
 
 	totalSize, err := mc.Source.GetFileSize()
