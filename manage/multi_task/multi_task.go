@@ -123,19 +123,16 @@ func (mc *MultiTaskController) Start() error {
 		}
 	}
 
-	mc.Tasks = make([]TaskInfo, blockCnt, blockCnt+1)
+	mc.Tasks = make([]TaskInfo, blockCnt)
 	blockSize := totalSize / blockCnt
 
 	for i := 0; i < blockCnt; i++ {
 		mc.Tasks[i].Offset = i * blockSize
 		mc.Tasks[i].Size = blockSize
+		if i == blockCnt-1 {
+			mc.Tasks[i].Size = mc.Tasks[i].Size + totalSize%blockCnt
+		}
 		go RunTask(&mc.Tasks[i], mc.Source, mc.Sink, mc.Notify)
-	}
-
-	if blockSize*blockCnt < totalSize {
-		mc.Tasks = append(mc.Tasks, TaskInfo{Offset: blockSize * blockCnt, Size: totalSize % blockCnt})
-		blockCnt = len(mc.Tasks)
-		go RunTask(&mc.Tasks[blockCnt-1], mc.Source, mc.Sink, mc.Notify)
 	}
 
 	for i := 0; i < blockCnt; i++ {
