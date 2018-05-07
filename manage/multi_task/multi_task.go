@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/garryfan2013/goget/client"
 	"github.com/garryfan2013/goget/config"
@@ -20,7 +21,6 @@ type MultiTaskController struct {
 	Tasks   []TaskInfo
 	Source  client.Crawler
 	Sink    record.Handler
-	Notify  chan int
 }
 
 const (
@@ -35,7 +35,6 @@ func (mc *MultiTaskController) Open(c client.Crawler, h record.Handler) error {
 	mc.Configs = make(map[string]string)
 	mc.Source = c
 	mc.Sink = h
-	mc.Notify = make(chan int)
 	return nil
 }
 
@@ -43,13 +42,10 @@ func (mc *MultiTaskController) SetConfig(key string, value string) {
 	mc.Configs[key] = value
 }
 
-func RunTask(task *TaskInfo, crawler client.Crawler, handler record.Handler, notify chan int) {
+func RunTask(task *TaskInfo, crawler client.Crawler, handler record.Handler, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	fmt.Printf("RunTask: offset = %d size = %d\n", task.Offset, task.Size)
-
-	defer func(n chan<- int) {
-		n <- 1
-	}(notify)
-
 	blockData, err := crawler.GetFileBlock(task.Offset, task.Size)
 	if err != nil {
 		fmt.Printf("GetFileBlock failed\n")
@@ -126,19 +122,19 @@ func (mc *MultiTaskController) Start() error {
 	mc.Tasks = make([]TaskInfo, blockCnt)
 	blockSize := totalSize / blockCnt
 
+	var wg sync.WaitGroup
+
 	for i := 0; i < blockCnt; i++ {
 		mc.Tasks[i].Offset = i * blockSize
 		mc.Tasks[i].Size = blockSize
 		if i == blockCnt-1 {
 			mc.Tasks[i].Size = mc.Tasks[i].Size + totalSize%blockCnt
 		}
-		go RunTask(&mc.Tasks[i], mc.Source, mc.Sink, mc.Notify)
+		wg.Add(1)
+		go RunTask(&mc.Tasks[i], mc.Source, mc.Sink, &wg)
 	}
 
-	for i := 0; i < blockCnt; i++ {
-		<-mc.Notify
-	}
-
+	wg.Wait()
 	return nil
 }
 
