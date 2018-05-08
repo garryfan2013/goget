@@ -9,7 +9,7 @@ import (
 
 const (
 	HeaderKeyContentLength = "Content-Length"
-	HeaderRange            = "Range"
+	HeaderKeyRange         = "Range"
 )
 
 type HttpCrawler struct {
@@ -57,7 +57,7 @@ func (h *HttpCrawler) GetFileBlock(offset int, size int) ([]byte, error) {
 		return nil, err
 	}
 
-	req.Header.Add(HeaderRange, fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
+	req.Header.Add(HeaderKeyRange, fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
 	resp, err := h.c.Do(req)
 	if err != nil {
 		return nil, err
