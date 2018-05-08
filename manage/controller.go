@@ -21,26 +21,21 @@ type Controller interface {
 
 type ControllerFactory struct {
 	ControllerType int
-	Create         func() (Controller, error)
+	Create         func() interface{}
 }
 
 var (
 	Factories = []ControllerFactory{
 		ControllerFactory{
 			ControllerType: MultiTaskType,
-			Create: func() (Controller, error) {
-				var c Controller
-				var err error
-				c, err = multi_task.NewMultiTaskController()
-
-				return c, err
-			}}}
+			Create:         multi_task.NewMultiTaskController}}
 )
 
 func NewController(ct int) (Controller, error) {
 	for _, ci := range Factories {
 		if ci.ControllerType == ct {
-			return ci.Create()
+			var c Controller = ci.Create().(Controller)
+			return c, nil
 		}
 	}
 

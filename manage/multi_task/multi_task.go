@@ -27,8 +27,8 @@ const (
 	DefaultTaskCount = 5
 )
 
-func NewMultiTaskController() (*MultiTaskController, error) {
-	return new(MultiTaskController), nil
+func NewMultiTaskController() interface{} {
+	return new(MultiTaskController)
 }
 
 func (mc *MultiTaskController) Open(c client.Crawler, h record.Handler) error {
