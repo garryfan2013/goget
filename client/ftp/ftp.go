@@ -50,7 +50,7 @@ func (fc *FtpCrawler) SetConfig(key string, value string) {
 	fc.Configs[key] = value
 }
 
-func (fc *FtpCrawler) GetFileSize() (int, error) {
+func (fc *FtpCrawler) GetFileSize() (int64, error) {
 	conn, err := ftp.Dial(fc.Url.Host)
 	if err != nil {
 		return 0, err
@@ -78,48 +78,50 @@ func (fc *FtpCrawler) GetFileSize() (int, error) {
 		return 0, err
 	}
 
-	return int(size), nil
+	return size, nil
 }
 
-func (fc *FtpCrawler) GetFileBlock(offset int, size int) ([]byte, error) {
+func (fc *FtpCrawler) GetFileBlock(offset int64, size int64) (io.ReadCloser, error) {
 	conn, err := ftp.Dial(fc.Url.Host)
 	if err != nil {
 		return nil, err
 	}
 
-	defer conn.Quit()
-
 	if err = conn.Login(fc.Configs[config.KeyUserName], fc.Configs[config.KeyPasswd]); err != nil {
+		conn.Quit()
 		return nil, err
 	}
-
-	defer conn.Logout()
 
 	resp, err := conn.RetrFrom(fc.Url.Path, uint64(offset))
 	if err != nil {
 		return nil, err
 	}
 
-	defer resp.Close()
-
-	buf := make([]byte, size)
-	var bytesRead, total = 0, size
-	for bytesRead < total {
-		var rb []byte = buf[bytesRead:]
-		n, err := resp.Read(rb)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-
-		bytesRead = bytesRead + n
-	}
-
-	return buf, nil
+	var rc io.ReadCloser = NewResponseReadCloser(resp, conn)
+	return rc, nil
 }
 
 func (fc *FtpCrawler) Close() {
 
+}
+
+type ResponseReadCloser struct {
+	R *ftp.Response
+	C *ftp.ServerConn
+}
+
+func NewResponseReadCloser(r *ftp.Response, c *ftp.ServerConn) *ResponseReadCloser {
+	return &ResponseReadCloser{r, c}
+}
+
+func (rrc *ResponseReadCloser) Read(buf []byte) (int, error) {
+	return rrc.R.Read(buf)
+}
+
+func (rrc *ResponseReadCloser) Close() error {
+	rrc.R.Close()
+	rrc.C.Logout()
+	rrc.C.Quit()
+
+	return nil
 }

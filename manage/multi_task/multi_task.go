@@ -3,17 +3,19 @@ package multi_task
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"sync"
 
 	"github.com/garryfan2013/goget/client"
 	"github.com/garryfan2013/goget/config"
 	"github.com/garryfan2013/goget/record"
+	"github.com/garryfan2013/goget/util"
 )
 
 type TaskInfo struct {
-	Offset int
-	Size   int
+	Offset int64
+	Size   int64
 }
 
 type MultiTaskController struct {
@@ -24,7 +26,8 @@ type MultiTaskController struct {
 }
 
 const (
-	DefaultTaskCount = 5
+	DefaultTaskCount  = 5
+	DefaultBufferSize = 4 * 1024
 )
 
 func NewMultiTaskController() interface{} {
@@ -46,24 +49,25 @@ func RunTask(task *TaskInfo, crawler client.Crawler, handler record.Handler, wg 
 	defer wg.Done()
 
 	fmt.Printf("RunTask: offset = %d size = %d\n", task.Offset, task.Size)
-	blockData, err := crawler.GetFileBlock(task.Offset, task.Size)
+	blockReadCloser, err := crawler.GetFileBlock(task.Offset, task.Size)
 	if err != nil {
-		fmt.Printf("GetFileBlock failed\n")
+		fmt.Printf("GetFileBlock failed: %s\n", err.Error())
+		return
+	}
+	defer blockReadCloser.Close()
+
+	var wa io.WriterAt = handler.(io.WriterAt)
+	var w io.Writer = util.NewOffsetWriter(wa, task.Offset)
+	var r io.Reader = blockReadCloser.(io.Reader)
+
+	n, err := io.CopyN(w, r, task.Size)
+	if err != nil {
+		fmt.Printf("CopyN failed: %s\n", err.Error())
 		return
 	}
 
-	if len(blockData) != task.Size {
-		fmt.Printf("The number of bytes read(%d) not amount to the expecting(%d)\n", len(blockData), task.Size)
-	}
-
-	n, err := handler.WriteAt(blockData, task.Offset, task.Size)
 	if n != task.Size {
-		fmt.Printf("The number of bytes written(%d) not amount to the expecting(%d)\n", n, task.Size)
-	}
-
-	if err != nil {
-		fmt.Printf("Write file failed\n")
-		return
+		fmt.Printf("The number of bytes read(%d) not amount to the expecting(%d)\n", n, task.Size)
 	}
 }
 
@@ -111,8 +115,6 @@ func (mc *MultiTaskController) Start() error {
 
 	blockCnt := DefaultTaskCount
 	if v, exists := mc.Configs[config.KeyTaskCount]; exists {
-		var err error
-		fmt.Printf("%s\n", v)
 		blockCnt, err = strconv.Atoi(v)
 		if err != nil {
 			return err
@@ -120,15 +122,15 @@ func (mc *MultiTaskController) Start() error {
 	}
 
 	mc.Tasks = make([]TaskInfo, blockCnt)
-	blockSize := totalSize / blockCnt
+	blockSize := totalSize / int64(blockCnt)
 
 	var wg sync.WaitGroup
 
 	for i := 0; i < blockCnt; i++ {
-		mc.Tasks[i].Offset = i * blockSize
+		mc.Tasks[i].Offset = int64(i) * blockSize
 		mc.Tasks[i].Size = blockSize
 		if i == blockCnt-1 {
-			mc.Tasks[i].Size = mc.Tasks[i].Size + totalSize%blockCnt
+			mc.Tasks[i].Size = mc.Tasks[i].Size + totalSize%int64(blockCnt)
 		}
 		wg.Add(1)
 		go RunTask(&mc.Tasks[i], mc.Source, mc.Sink, &wg)

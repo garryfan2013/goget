@@ -2,6 +2,7 @@ package record
 
 import (
 	"errors"
+	"io"
 
 	"github.com/garryfan2013/goget/record/file"
 )
@@ -12,7 +13,8 @@ const (
 
 type Handler interface {
 	Open(path string) error
-	WriteAt(data []byte, offset int, size int) (int, error)
+	//WriteAt(data []byte, offset int, size int) (int, error)
+	io.WriterAt
 	Close() error
 }
 

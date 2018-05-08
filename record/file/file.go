@@ -25,12 +25,12 @@ func (w *LocalFileWriter) Open(path string) error {
 	return nil
 }
 
-func (w *LocalFileWriter) WriteAt(data []byte, offset int, size int) (int, error) {
+func (w *LocalFileWriter) WriteAt(data []byte, offset int64) (int, error) {
 	if w.fp == nil {
 		return 0, fmt.Errorf("File %s not ready, cant write to it", w.FilePath)
 	}
 
-	n, err := w.fp.WriteAt(data, int64(offset))
+	n, err := w.fp.WriteAt(data, offset)
 	if err != nil {
 		return n, err
 	}

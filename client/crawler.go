@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"io"
 
 	"github.com/garryfan2013/goget/client/ftp"
 	"github.com/garryfan2013/goget/client/http"
@@ -14,9 +15,9 @@ const (
 
 type Crawler interface {
 	Open(url string) error
-	GetFileSize() (int, error)
+	GetFileSize() (int64, error)
 	SetConfig(key string, value string)
-	GetFileBlock(offset int, size int) ([]byte, error)
+	GetFileBlock(offset int64, size int64) (io.ReadCloser, error)
 	Close()
 }
 

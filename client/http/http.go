@@ -2,7 +2,7 @@ package http
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 )
@@ -31,7 +31,7 @@ func (h *HttpCrawler) SetConfig(key string, value string) {
 
 }
 
-func (h *HttpCrawler) GetFileSize() (int, error) {
+func (h *HttpCrawler) GetFileSize() (int64, error) {
 	resp, err := h.c.Head(h.FileUrl)
 	if err != nil {
 		return 0, err
@@ -48,10 +48,10 @@ func (h *HttpCrawler) GetFileSize() (int, error) {
 		return 0, err
 	}
 
-	return len, nil
+	return int64(len), nil
 }
 
-func (h *HttpCrawler) GetFileBlock(offset int, size int) ([]byte, error) {
+func (h *HttpCrawler) GetFileBlock(offset int64, size int64) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, h.FileUrl, nil)
 	if err != nil {
 		return nil, err
@@ -63,9 +63,7 @@ func (h *HttpCrawler) GetFileBlock(offset int, size int) ([]byte, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	return body, err
+	return resp.Body, err
 }
 
 func (h *HttpCrawler) Close() {
