@@ -17,9 +17,8 @@ type HttpCrawler struct {
 	c       *http.Client
 }
 
-func NewHttpCrawler() (*HttpCrawler, error) {
-	h := new(HttpCrawler)
-	return h, nil
+func NewHttpCrawler() interface{} {
+	return new(HttpCrawler)
 }
 
 func (h *HttpCrawler) Open(url string) error {

@@ -22,28 +22,18 @@ type Crawler interface {
 
 type CrawlerFactory struct {
 	Protocol int
-	Create   func() (Crawler, error)
+	Create   func() interface{}
 }
 
 var (
 	Factories []CrawlerFactory = []CrawlerFactory{
 		CrawlerFactory{
 			Protocol: HttpProtocol,
-			Create: func() (Crawler, error) {
-				var c Crawler
-				var err error
-				c, err = http.NewHttpCrawler()
-				return c, err
-			}},
+			Create:   http.NewHttpCrawler},
 
 		CrawlerFactory{
 			Protocol: FtpProtocol,
-			Create: func() (Crawler, error) {
-				var c Crawler
-				var err error
-				c, err = ftp.NewFtpCrawler()
-				return c, err
-			}}}
+			Create:   ftp.NewFtpCrawler}}
 )
 
 func NewCrawler(proto int) (Crawler, error) {
@@ -56,5 +46,6 @@ func NewCrawler(proto int) (Crawler, error) {
 	}
 
 	f := Factories[proto]
-	return f.Create()
+	var c Crawler = f.Create().(Crawler)
+	return c, nil
 }

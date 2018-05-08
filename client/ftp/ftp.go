@@ -19,8 +19,8 @@ type FtpCrawler struct {
 	Configs map[string]string
 }
 
-func NewFtpCrawler() (*FtpCrawler, error) {
-	return new(FtpCrawler), nil
+func NewFtpCrawler() interface{} {
+	return new(FtpCrawler)
 }
 
 func (fc *FtpCrawler) Open(u string) error {

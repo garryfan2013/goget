@@ -10,6 +10,10 @@ type LocalFileWriter struct {
 	FilePath string
 }
 
+func NewLocalFileWriter() interface{} {
+	return new(LocalFileWriter)
+}
+
 func (w *LocalFileWriter) Open(path string) error {
 	fp, err := os.Create(path)
 	if err != nil {
@@ -36,9 +40,4 @@ func (w *LocalFileWriter) WriteAt(data []byte, offset int, size int) (int, error
 
 func (w *LocalFileWriter) Close() error {
 	return w.fp.Close()
-}
-
-func NewLocalFileWriter() (*LocalFileWriter, error) {
-	p := new(LocalFileWriter)
-	return p, nil
 }

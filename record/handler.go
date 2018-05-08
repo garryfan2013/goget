@@ -18,24 +18,20 @@ type Handler interface {
 
 type HandlerFactory struct {
 	HandlerType int
-	Create      func() (Handler, error)
+	Create      func() interface{}
 }
 
 var (
 	Factories = []HandlerFactory{
 		HandlerFactory{
 			HandlerType: LocalFileType,
-			Create: func() (Handler, error) {
-				var h Handler
-				var err error
-				h, err = file.NewLocalFileWriter()
-				return h, err
-			}}}
+			Create:      file.NewLocalFileWriter}}
 )
 
 func NewHandler(t int) (Handler, error) {
 	if t != LocalFileType {
 		return nil, errors.New("Illegal handler type")
 	}
-	return Factories[t].Create()
+	var i Handler = Factories[t].Create().(Handler)
+	return i, nil
 }
