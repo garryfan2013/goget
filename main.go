@@ -125,8 +125,6 @@ func main() {
 		return
 	}
 
-	defer controller.Close()
-
 	if err = controller.Open(source, sink); err != nil {
 		fmt.Println(err)
 		return
