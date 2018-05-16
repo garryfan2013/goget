@@ -131,6 +131,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+	defer controller.Close()
 
 	savePath := fmt.Sprintf("%s/%s", savePath, path.Base(urlStr))
 
@@ -144,6 +145,7 @@ func main() {
 		controller.SetConfig(config.KeyPasswd, passwd)
 	}
 
+	fmt.Println("Download Started... please wait")
 	if err = controller.Start(); err != nil {
 		fmt.Println(err)
 		return

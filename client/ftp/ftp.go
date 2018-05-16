@@ -1,6 +1,7 @@
 package ftp
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -50,7 +51,7 @@ func (fc *FtpCrawler) SetConfig(key string, value string) {
 	fc.Configs[key] = value
 }
 
-func (fc *FtpCrawler) GetFileSize() (int64, error) {
+func (fc *FtpCrawler) GetFileSize(ctx context.Context) (int64, error) {
 	conn, err := ftp.Dial(fc.Url.Host)
 	if err != nil {
 		return 0, err
@@ -81,7 +82,7 @@ func (fc *FtpCrawler) GetFileSize() (int64, error) {
 	return size, nil
 }
 
-func (fc *FtpCrawler) GetFileBlock(offset int64, size int64) (io.ReadCloser, error) {
+func (fc *FtpCrawler) GetFileBlock(ctx context.Context, offset int64, size int64) (io.ReadCloser, error) {
 	conn, err := ftp.Dial(fc.Url.Host)
 	if err != nil {
 		return nil, err

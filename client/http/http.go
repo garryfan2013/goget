@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,8 +32,14 @@ func (h *HttpCrawler) SetConfig(key string, value string) {
 
 }
 
-func (h *HttpCrawler) GetFileSize() (int64, error) {
-	resp, err := h.c.Head(h.FileUrl)
+func (h *HttpCrawler) GetFileSize(ctx context.Context) (int64, error) {
+	req, err := http.NewRequest(http.MethodHead, h.FileUrl, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	req = req.WithContext(ctx)
+	resp, err := h.c.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -51,12 +58,13 @@ func (h *HttpCrawler) GetFileSize() (int64, error) {
 	return int64(len), nil
 }
 
-func (h *HttpCrawler) GetFileBlock(offset int64, size int64) (io.ReadCloser, error) {
+func (h *HttpCrawler) GetFileBlock(ctx context.Context, offset int64, size int64) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, h.FileUrl, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	req = req.WithContext(ctx)
 	req.Header.Add(HeaderKeyRange, fmt.Sprintf("bytes=%d-%d", offset, offset+size-1))
 	resp, err := h.c.Do(req)
 	if err != nil {

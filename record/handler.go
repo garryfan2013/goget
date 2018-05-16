@@ -13,7 +13,6 @@ const (
 
 type Handler interface {
 	Open(path string) error
-	//WriteAt(data []byte, offset int, size int) (int, error)
 	io.WriterAt
 	Close() error
 }

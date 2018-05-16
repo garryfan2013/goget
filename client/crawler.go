@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -15,9 +16,9 @@ const (
 
 type Crawler interface {
 	Open(url string) error
-	GetFileSize() (int64, error)
+	GetFileSize(ctx context.Context) (int64, error)
 	SetConfig(key string, value string)
-	GetFileBlock(offset int64, size int64) (io.ReadCloser, error)
+	GetFileBlock(ctx context.Context, offset int64, size int64) (io.ReadCloser, error)
 	Close()
 }
 

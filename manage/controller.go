@@ -16,6 +16,7 @@ type Controller interface {
 	Open(c client.Crawler, h record.Handler) error
 	SetConfig(key string, value string)
 	Start() error
+	Stop() error
 	Close()
 }
 
@@ -28,7 +29,7 @@ var (
 	Factories = []ControllerFactory{
 		ControllerFactory{
 			ControllerType: MultiTaskType,
-			Create:         multi_task.NewMultiTaskController}}
+			Create:         multi_task.NewPipelineController}}
 )
 
 func NewController(ct int) (Controller, error) {
