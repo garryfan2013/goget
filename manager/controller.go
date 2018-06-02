@@ -1,11 +1,10 @@
-package manage
+package manager
 
 import (
 	"errors"
 
-	"github.com/garryfan2013/goget/client"
-	"github.com/garryfan2013/goget/manage/multi_task"
-	"github.com/garryfan2013/goget/record"
+	"github.com/garryfan2013/goget/sink"
+	"github.com/garryfan2013/goget/source"
 )
 
 const (
@@ -13,7 +12,7 @@ const (
 )
 
 type Controller interface {
-	Open(c client.Crawler, h record.Handler) error
+	Open(src source.StreamReader, sink sink.StreamWriter) error
 	SetConfig(key string, value string)
 	Start() error
 	Stop() error
@@ -29,7 +28,7 @@ var (
 	Factories = []ControllerFactory{
 		ControllerFactory{
 			ControllerType: MultiTaskType,
-			Create:         multi_task.NewPipelineController}}
+			Create:         NewPipelineController}}
 )
 
 func NewController(ct int) (Controller, error) {

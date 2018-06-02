@@ -1,4 +1,4 @@
-package multi_task
+package manager
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"io"
 	"sync"
 
-	"github.com/garryfan2013/goget/client"
 	"github.com/garryfan2013/goget/config"
-	"github.com/garryfan2013/goget/record"
+	"github.com/garryfan2013/goget/sink"
+	"github.com/garryfan2013/goget/source"
 	"github.com/garryfan2013/goget/util"
 	"github.com/garryfan2013/goget/util/pipeline"
 )
@@ -19,25 +19,25 @@ const (
 	PoolBufferAllocSize = 128 * 1024
 )
 
-// CrawlerTaskGenerator-AsyncExecutor
+// ReaderTaskGenerator-AsyncExecutor
 // Input(string): download url
-// Output(CrawlerTaskIterator): Iterator for crawler task
+// Output(ReaderTaskIterator): Iterator for reader task
 type UrlRequestHandler struct {
-	Source client.Crawler
-	Tasks  []CrawlerTask
+	Source source.StreamReader
+	Tasks  []ReaderTask
 	P      int
 	Notify chan<- int64
 }
 
-type CrawlerTask struct {
+type ReaderTask struct {
 	Offset int64
 	Size   int64
 }
 
-func NewUrlRequestHandler(s client.Crawler, n int, notify chan<- int64) *UrlRequestHandler {
+func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- int64) *UrlRequestHandler {
 	return &UrlRequestHandler{
 		Source: s,
-		Tasks:  make([]CrawlerTask, n),
+		Tasks:  make([]ReaderTask, n),
 		P:      0,
 		Notify: notify}
 }
@@ -49,7 +49,7 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, errors.New("Unexpected data type")
 	}
 
-	total, err := h.Source.GetFileSize(ctx)
+	total, err := h.Source.Size(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 
 func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
 	if h.P < len(h.Tasks) {
-		var tp *CrawlerTask = &h.Tasks[h.P]
+		var tp *ReaderTask = &h.Tasks[h.P]
 		h.P += 1
 		return tp, nil
 	}
@@ -81,16 +81,16 @@ func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
 	return nil, pipeline.ErrIteratorEOF
 }
 
-// Crawler-AsyncExecutor
-// Input(CrawlerTask): the specific offset and size of a target file block
+// Reader-AsyncExecutor
+// Input(ReaderTask): the specific offset and size of a target file block
 // Output([]byte): stream of block data
-type CrawlerTaskHandler struct {
-	Source     client.Crawler // Source crawler
-	RC         io.ReadCloser  // io interface obtained from crawler
-	BufferPool *sync.Pool     // This BufferPool will live as long as the CrawlerTaskHandler
-	Offset     int64          // Block offset in the whole file
-	Size       int64          // Block size
-	Left       int64          // Block data remained to read
+type ReaderTaskHandler struct {
+	Source     source.StreamReader // Source crawler
+	RC         io.ReadCloser       // io interface obtained from crawler
+	BufferPool *sync.Pool          // This BufferPool will live as long as the ReaderTaskHandler
+	Offset     int64               // Block offset in the whole file
+	Size       int64               // Block size
+	Left       int64               // Block data remained to read
 }
 
 // It's the writer's duty to put the buffer back to the pool
@@ -100,8 +100,8 @@ type WriterTask struct {
 	Offset     int64
 }
 
-func NewCrawlerTaskHandler(s client.Crawler, bs int64) *CrawlerTaskHandler {
-	return &CrawlerTaskHandler{
+func NewReaderTaskHandler(s source.StreamReader, bs int64) *ReaderTaskHandler {
+	return &ReaderTaskHandler{
 		Source: s,
 		BufferPool: &sync.Pool{
 			New: func() interface{} {
@@ -112,10 +112,10 @@ func NewCrawlerTaskHandler(s client.Crawler, bs int64) *CrawlerTaskHandler {
 		}}
 }
 
-func (h *CrawlerTaskHandler) Handle(ctx context.Context, arg interface{}) (interface{}, error) {
-	t, ok := arg.(*CrawlerTask)
+func (h *ReaderTaskHandler) Handle(ctx context.Context, arg interface{}) (interface{}, error) {
+	t, ok := arg.(*ReaderTask)
 	if !ok {
-		fmt.Printf("CrawlerTaskHandler: Unexpected data type %t\n", arg)
+		fmt.Printf("ReaderTaskHandler: Unexpected data type %t\n", arg)
 		return nil, errors.New("Unexpected data type")
 	}
 
@@ -123,18 +123,17 @@ func (h *CrawlerTaskHandler) Handle(ctx context.Context, arg interface{}) (inter
 	h.Size = t.Size
 	h.Left = t.Size
 
-	rc, err := h.Source.GetFileBlock(ctx, h.Offset, h.Size)
+	rc, err := h.Source.Get(ctx, h.Offset, h.Size)
 	if err != nil {
 		return nil, err
 	}
 
 	h.RC = rc
-
 	return h, nil
 }
 
 // Implement the iterator interface
-func (h *CrawlerTaskHandler) Next(ctx context.Context) (interface{}, error) {
+func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
 	task := h.BufferPool.Get().(*WriterTask)
 
 	task.Buf.Reset()
@@ -149,7 +148,7 @@ func (h *CrawlerTaskHandler) Next(ctx context.Context) (interface{}, error) {
 
 	if err == io.EOF {
 		if h.Left != 0 {
-			panic("CrawlerHandler.Next reach EOF, but got not enough data")
+			panic("ReaderHandler.Next reach EOF, but got not enough data")
 		}
 		return task, pipeline.ErrIteratorEOF
 	}
@@ -160,7 +159,7 @@ func (h *CrawlerTaskHandler) Next(ctx context.Context) (interface{}, error) {
 	}
 
 	if h.Left < 0 {
-		panic("CrawlerTaskHandler.Next: left negative!")
+		panic("ReaderTaskHandler.Next: left negative!")
 	}
 
 	if h.Left == 0 {
@@ -171,7 +170,7 @@ func (h *CrawlerTaskHandler) Next(ctx context.Context) (interface{}, error) {
 }
 
 // Implement the Closer interface
-func (h *CrawlerTaskHandler) Close() error {
+func (h *ReaderTaskHandler) Close() error {
 	h.RC.Close()
 	return nil
 }
@@ -180,10 +179,10 @@ func (h *CrawlerTaskHandler) Close() error {
 // Input([]byte): the actual data block
 // Output(bool): status
 type WriterTaskHandler struct {
-	Sink record.Handler
+	Sink sink.StreamWriter
 }
 
-func NewWriterTaskHandler(s record.Handler) *WriterTaskHandler {
+func NewWriterTaskHandler(s sink.StreamWriter) *WriterTaskHandler {
 	return &WriterTaskHandler{Sink: s}
 }
 
@@ -209,15 +208,15 @@ func (h *WriterTaskHandler) Handle(ctx context.Context, arg interface{}) (interf
 // PiplelineController constructor
 type PipelineController struct {
 	Configs map[string]string
-	Source  client.Crawler
-	Sink    record.Handler
+	Source  source.StreamReader
+	Sink    sink.StreamWriter
 }
 
 func NewPipelineController() interface{} {
 	return new(PipelineController)
 }
 
-func (pc *PipelineController) Open(c client.Crawler, h record.Handler) error {
+func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter) error {
 	pc.Configs = make(map[string]string)
 	pc.Source = c
 	pc.Sink = h
@@ -278,7 +277,7 @@ func (pc *PipelineController) Start() error {
 
 	crawlerExes := make([]pipeline.Executor, DefaultTaskCount)
 	for i := 0; i < DefaultTaskCount; i++ {
-		crawlerHandler := NewCrawlerTaskHandler(pc.Source, PoolBufferAllocSize)
+		crawlerHandler := NewReaderTaskHandler(pc.Source, PoolBufferAllocSize)
 		crawlerExes[i] = pipeline.NewAsyncExecutor(crawlerHandler)
 	}
 

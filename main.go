@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"path"
 
-	"github.com/garryfan2013/goget/client"
 	"github.com/garryfan2013/goget/config"
-	"github.com/garryfan2013/goget/manage"
-	"github.com/garryfan2013/goget/record"
+	"github.com/garryfan2013/goget/manager"
+	"github.com/garryfan2013/goget/sink"
+	"github.com/garryfan2013/goget/source"
 )
 
 /*
@@ -61,9 +61,9 @@ func getProtocol(urlStr string) (int, error) {
 	switch fmtUrl.Scheme {
 	case SchemeHttp:
 	case SchemeHttps:
-		return client.HttpProtocol, nil
+		return source.HttpProtocol, nil
 	case SchemeFtp:
-		return client.FtpProtocol, nil
+		return source.FtpProtocol, nil
 	default:
 	}
 
@@ -95,9 +95,9 @@ func main() {
 		return
 	}
 
-	var source client.Crawler
-	var sink record.Handler
-	var controller manage.Controller
+	var src source.StreamReader
+	var snk sink.StreamWriter
+	var controller manager.Controller
 	var err error
 	var protocol int
 
@@ -107,27 +107,25 @@ func main() {
 		return
 	}
 
-	source, err = client.NewCrawler(protocol)
+	src, err = source.NewStreamReader(protocol)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	sink, err = record.NewHandler(record.LocalFileType)
+	snk, err = sink.NewStreamWriter(sink.LocalFileType)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	controller, err = manage.NewController(manage.MultiTaskType)
+	controller, err = manager.NewController(manager.MultiTaskType)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	defer controller.Close()
-
-	if err = controller.Open(source, sink); err != nil {
+	if err = controller.Open(src, snk); err != nil {
 		fmt.Println(err)
 		return
 	}

@@ -1,4 +1,4 @@
-package ftp
+package source
 
 import (
 	"context"
@@ -15,44 +15,44 @@ const (
 	AnonymousPasswd = "anonymous"
 )
 
-type FtpCrawler struct {
-	Url     *url.URL
-	Configs map[string]string
+type FtpStreamReader struct {
+	url     *url.URL
+	configs map[string]string
 }
 
-func NewFtpCrawler() interface{} {
-	return new(FtpCrawler)
+func NewFtpStreamReader() interface{} {
+	return new(FtpStreamReader)
 }
 
-func (fc *FtpCrawler) Open(u string) error {
-	fc.Configs = make(map[string]string)
+func (fs *FtpStreamReader) Open(u string) error {
+	fs.configs = make(map[string]string)
 	purl, err := url.Parse(u)
 	if err != nil {
 		return err
 	}
 
-	fc.Url = purl
+	fs.url = purl
 	/*
 		In case of "ftp://[username[:passwd]]@ipaddr:port"
 		Set the corresponding user and password to the configs
 		The password of UserInfo is not mandatory, so must needs test
 	*/
-	if fc.Url.User != nil {
-		fc.SetConfig(config.KeyUserName, fc.Url.User.Username())
-		if passwd, set := fc.Url.User.Password(); set {
-			fc.SetConfig(config.KeyPasswd, passwd)
+	if fs.url.User != nil {
+		fs.SetConfig(config.KeyUserName, fs.url.User.Username())
+		if passwd, set := fs.url.User.Password(); set {
+			fs.SetConfig(config.KeyPasswd, passwd)
 		}
 	}
 
 	return nil
 }
 
-func (fc *FtpCrawler) SetConfig(key string, value string) {
-	fc.Configs[key] = value
+func (fs *FtpStreamReader) SetConfig(key string, value string) {
+	fs.configs[key] = value
 }
 
-func (fc *FtpCrawler) GetFileSize(ctx context.Context) (int64, error) {
-	conn, err := ftp.Dial(fc.Url.Host)
+func (fs *FtpStreamReader) Size(ctx context.Context) (int64, error) {
+	conn, err := ftp.Dial(fs.url.Host)
 	if err != nil {
 		return 0, err
 	}
@@ -63,8 +63,8 @@ func (fc *FtpCrawler) GetFileSize(ctx context.Context) (int64, error) {
 		}
 	}()
 
-	fmt.Printf("%s:%s\n", fc.Configs[config.KeyUserName], fc.Configs[config.KeyPasswd])
-	if err = conn.Login(fc.Configs[config.KeyUserName], fc.Configs[config.KeyPasswd]); err != nil {
+	fmt.Printf("%s:%s\n", fs.configs[config.KeyUserName], fs.configs[config.KeyPasswd])
+	if err = conn.Login(fs.configs[config.KeyUserName], fs.configs[config.KeyPasswd]); err != nil {
 		return 0, err
 	}
 
@@ -74,7 +74,7 @@ func (fc *FtpCrawler) GetFileSize(ctx context.Context) (int64, error) {
 		}
 	}()
 
-	size, err := conn.FileSize(fc.Url.Path)
+	size, err := conn.FileSize(fs.url.Path)
 	if err != nil {
 		return 0, err
 	}
@@ -82,18 +82,18 @@ func (fc *FtpCrawler) GetFileSize(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-func (fc *FtpCrawler) GetFileBlock(ctx context.Context, offset int64, size int64) (io.ReadCloser, error) {
-	conn, err := ftp.Dial(fc.Url.Host)
+func (fs *FtpStreamReader) Get(ctx context.Context, offset int64, size int64) (io.ReadCloser, error) {
+	conn, err := ftp.Dial(fs.url.Host)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = conn.Login(fc.Configs[config.KeyUserName], fc.Configs[config.KeyPasswd]); err != nil {
+	if err = conn.Login(fs.configs[config.KeyUserName], fs.configs[config.KeyPasswd]); err != nil {
 		conn.Quit()
 		return nil, err
 	}
 
-	resp, err := conn.RetrFrom(fc.Url.Path, uint64(offset))
+	resp, err := conn.RetrFrom(fs.url.Path, uint64(offset))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (fc *FtpCrawler) GetFileBlock(ctx context.Context, offset int64, size int64
 	return rc, nil
 }
 
-func (fc *FtpCrawler) Close() {
+func (fs *FtpStreamReader) Close() {
 
 }
 
