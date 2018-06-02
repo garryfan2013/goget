@@ -3,13 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/url"
-	"path"
 
-	"github.com/garryfan2013/goget/config"
 	"github.com/garryfan2013/goget/manager"
-	"github.com/garryfan2013/goget/sink"
-	"github.com/garryfan2013/goget/source"
 )
 
 /*
@@ -52,24 +47,6 @@ func usage() {
 	flag.PrintDefaults()
 }
 
-func getProtocol(urlStr string) (int, error) {
-	fmtUrl, err := url.Parse(urlStr)
-	if err != nil {
-		return -1, err
-	}
-
-	switch fmtUrl.Scheme {
-	case SchemeHttp:
-	case SchemeHttps:
-		return source.HttpProtocol, nil
-	case SchemeFtp:
-		return source.FtpProtocol, nil
-	default:
-	}
-
-	return -1, fmt.Errorf("Unsupported url scheme: %s", fmtUrl)
-}
-
 func main() {
 	flag.Parse()
 
@@ -95,57 +72,11 @@ func main() {
 		return
 	}
 
-	var src source.StreamReader
-	var snk sink.StreamWriter
-	var controller manager.Controller
-	var err error
-	var protocol int
+	var jobManager *manager.JobManager = manager.GetInstance()
 
-	protocol, err = getProtocol(urlStr)
+	_, err := jobManager.Add(urlStr, savePath, userName, passwd, taskCount)
 	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	src, err = source.NewStreamReader(protocol)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	snk, err = sink.NewStreamWriter(sink.LocalFileType)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	controller, err = manager.NewController(manager.MultiTaskType)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if err = controller.Open(src, snk); err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer controller.Close()
-
-	savePath := fmt.Sprintf("%s/%s", savePath, path.Base(urlStr))
-
-	controller.SetConfig(config.KeyRemoteUrl, urlStr)
-	controller.SetConfig(config.KeyLocalPath, savePath)
-	controller.SetConfig(config.KeyTaskCount, fmt.Sprintf("%d", taskCount))
-	if userName != "" {
-		controller.SetConfig(config.KeyUserName, userName)
-	}
-	if passwd != "" {
-		controller.SetConfig(config.KeyPasswd, passwd)
-	}
-
-	fmt.Println("Download Started... please wait")
-	if err = controller.Start(); err != nil {
-		fmt.Println(err)
+		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
 		return
 	}
 }

@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	DefaultTaskCount    = 5
 	PoolBufferAllocSize = 128 * 1024
 )
 
