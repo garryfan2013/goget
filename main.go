@@ -17,12 +17,7 @@ import (
 */
 
 const (
-	Version          = "1.0.0"
-	DefaultTaskCount = 5
-
-	SchemeHttp  = "http"
-	SchemeHttps = "https"
-	SchemeFtp   = "ftp"
+	Version = "1.0.0"
 )
 
 var (
@@ -35,7 +30,7 @@ var (
 
 func init() {
 	flag.BoolVar(&printHelp, "h", false, "Printf help messages")
-	flag.IntVar(&taskCount, "c", DefaultTaskCount, "Multi-task count for concurrent downloading")
+	flag.IntVar(&taskCount, "c", manager.DefaultTaskCount, "Multi-task count for concurrent downloading")
 	flag.StringVar(&savePath, "o", "./", "The specified download file saved path")
 	flag.StringVar(&userName, "u", "", "username for authentication")
 	flag.StringVar(&passwd, "p", "", "passwd for authentication")

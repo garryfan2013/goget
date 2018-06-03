@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	Version          = "1.0.0"
 	DefaultTaskCount = 5
 
 	SchemeHttp  = "http"
