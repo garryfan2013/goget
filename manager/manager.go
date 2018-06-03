@@ -40,7 +40,7 @@ type Job struct {
 	passwd   string
 	src      source.StreamReader
 	snk      sink.StreamWriter
-	ctrl     Controller
+	ctrl     ProgressController
 }
 
 type JobManager struct {
@@ -153,4 +153,13 @@ func (jm *JobManager) Stop(id JobId) error {
 
 func (jm *JobManager) Delete(id JobId) error {
 	return nil
+}
+
+func (jm *JobManager) Progress(id JobId) (*Stats, error) {
+	job, ok := jm.jobs[id]
+	if !ok {
+		return nil, ErrInvalidJobId
+	}
+
+	return job.ctrl.Progress()
 }

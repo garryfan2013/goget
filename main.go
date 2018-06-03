@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/garryfan2013/goget/manager"
 )
@@ -74,9 +75,29 @@ func main() {
 
 	var jobManager *manager.JobManager = manager.GetInstance()
 
-	_, err := jobManager.Add(urlStr, savePath, userName, passwd, taskCount)
+	id, err := jobManager.Add(urlStr, savePath, userName, passwd, taskCount)
 	if err != nil {
 		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
 		return
+	}
+
+	var count int
+	for {
+		<-time.After(time.Millisecond * 500)
+		count += 1
+		stats, err := jobManager.Progress(id)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		if stats.Size > 0 {
+			fmt.Printf("\rJob progress: %d/%d %dkb/s", stats.Done, stats.Size, stats.Done/int64(count*1024/2))
+			if stats.Size == stats.Done {
+				fmt.Printf("\nJob Done\n")
+				jobManager.Stop(id)
+				return
+			}
+		}
 	}
 }

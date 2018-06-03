@@ -19,6 +19,20 @@ type Controller interface {
 	Close()
 }
 
+type Stats struct {
+	Size int64
+	Done int64
+}
+
+type Progresser interface {
+	Progress() (*Stats, error)
+}
+
+type ProgressController interface {
+	Controller
+	Progresser
+}
+
 type ControllerFactory struct {
 	ControllerType int
 	Create         func() interface{}
@@ -31,10 +45,10 @@ var (
 			Create:         NewPipelineController}}
 )
 
-func NewController(ct int) (Controller, error) {
+func NewController(ct int) (ProgressController, error) {
 	for _, ci := range Factories {
 		if ci.ControllerType == ct {
-			var c Controller = ci.Create().(Controller)
+			var c ProgressController = ci.Create().(ProgressController)
 			return c, nil
 		}
 	}

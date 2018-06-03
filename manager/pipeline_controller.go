@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 
 	"github.com/garryfan2013/goget/config"
@@ -14,8 +15,14 @@ import (
 	"github.com/garryfan2013/goget/util/pipeline"
 )
 
+// Default value for config parameters
 const (
 	PoolBufferAllocSize = 128 * 1024
+)
+
+// Control message definition
+const (
+	CTRL_MSG_GET_STATS = 0
 )
 
 // ReaderTaskGenerator-AsyncExecutor
@@ -204,11 +211,24 @@ func (h *WriterTaskHandler) Handle(ctx context.Context, arg interface{}) (interf
 	return n, nil
 }
 
+// Sync request-response module
+type Message struct {
+	cmd  int
+	data interface{}
+}
+
+type Roundtrip struct {
+	M Message
+	R chan *Message
+}
+
 // PiplelineController constructor
 type PipelineController struct {
-	Configs map[string]string
-	Source  source.StreamReader
-	Sink    sink.StreamWriter
+	Configs  map[string]string
+	Source   source.StreamReader
+	Sink     sink.StreamWriter
+	CtrlChan chan *Roundtrip
+	Cancel   context.CancelFunc
 }
 
 func NewPipelineController() interface{} {
@@ -219,6 +239,8 @@ func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter) e
 	pc.Configs = make(map[string]string)
 	pc.Source = c
 	pc.Sink = h
+	pc.CtrlChan = make(chan *Roundtrip)
+
 	return nil
 }
 
@@ -226,7 +248,6 @@ func (pc *PipelineController) SetConfig(key string, value string) {
 	pc.Configs[key] = value
 }
 
-var wg sync.WaitGroup
 var cancel context.CancelFunc
 
 func (pc *PipelineController) Start() error {
@@ -260,22 +281,31 @@ func (pc *PipelineController) Start() error {
 		return errors.New("Sink path not set!")
 	}
 
+	taskCountStr, exists := pc.Configs[config.KeyTaskCount]
+	if exists == false {
+		return errors.New("TaskCount not set!")
+	}
+	taskCount, err := strconv.Atoi(taskCountStr)
+	if err != nil {
+		return err
+	}
+
 	if err := pc.Sink.Open(path); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	ctx, cancel = context.WithCancel(ctx)
+	ctx, pc.Cancel = context.WithCancel(ctx)
 
 	// Prepare the start channel and notify channel
 	startCh := make(chan interface{})
 	notifyCh := make(chan int64)
 
-	urlHandler := NewUrlRequestHandler(pc.Source, DefaultTaskCount, notifyCh)
+	urlHandler := NewUrlRequestHandler(pc.Source, taskCount, notifyCh)
 	urlEx := pipeline.NewAsyncExecutor(urlHandler)
 
-	crawlerExes := make([]pipeline.Executor, DefaultTaskCount)
-	for i := 0; i < DefaultTaskCount; i++ {
+	crawlerExes := make([]pipeline.Executor, taskCount)
+	for i := 0; i < taskCount; i++ {
 		crawlerHandler := NewReaderTaskHandler(pc.Source, PoolBufferAllocSize)
 		crawlerExes[i] = pipeline.NewAsyncExecutor(crawlerHandler)
 	}
@@ -299,22 +329,26 @@ func (pc *PipelineController) Start() error {
 	counterCh, writerErrCh := writerEx.Run(ctx, fanInCh)
 
 	var written, total int64
-	wg.Add(1)
+
 	go func() {
 		for {
 			select {
+			// Error handler
 			case e := <-urlErrCh:
 				fmt.Printf("urlErrch: %s\n", e.Error())
 			case e := <-fanInErrCh:
 				fmt.Printf("fanInErrCh: %s\n", e.Error())
 			case e := <-writerErrCh:
 				fmt.Printf("writerErrCh: %s\n", e.Error())
+
+			// Recv the total size of this job
 			case total = <-notifyCh:
-				fmt.Printf("Notify file length: %d\n", total)
-				if written == total {
+				/*if written == total {
 					fmt.Printf("Progress: Done\n")
-					wg.Done()
-				}
+					return
+				}*/
+
+			// Stats updated
 			case ret := <-counterCh:
 				cnt, ok := ret.(int)
 				if !ok {
@@ -322,13 +356,24 @@ func (pc *PipelineController) Start() error {
 				}
 
 				written += int64(cnt)
-				fmt.Printf("Progress: %d bytes written\n", written)
-				if written == total {
-					fmt.Printf("Progress: Done\n")
-					wg.Done()
+				/*if written == total {
+					return
+				}*/
+
+			// Ctrl channel
+			case msg := <-pc.CtrlChan:
+				switch msg.M.cmd {
+				case CTRL_MSG_GET_STATS:
+					msg.R <- &Message{
+						cmd: msg.M.cmd,
+						data: &Stats{
+							Size: total,
+							Done: written,
+						}}
 				}
+
+			// Cancel channel
 			case <-ctx.Done():
-				fmt.Printf("Controller canceled\n")
 				return
 			}
 		}
@@ -336,15 +381,12 @@ func (pc *PipelineController) Start() error {
 
 	// Start the pipeline
 	startCh <- url
-	wg.Wait()
-	cancel()
 	return nil
 }
 
 func (pc *PipelineController) Stop() error {
-	fmt.Println("Now calling stop...")
-	if cancel != nil {
-		cancel()
+	if pc.Cancel != nil {
+		pc.Cancel()
 	}
 
 	return nil
@@ -353,4 +395,16 @@ func (pc *PipelineController) Stop() error {
 func (mc *PipelineController) Close() {
 	mc.Sink.Close()
 	mc.Source.Close()
+}
+
+func (mc *PipelineController) Progress() (*Stats, error) {
+	ch := make(chan *Message, 1)
+	mc.CtrlChan <- &Roundtrip{
+		M: Message{cmd: CTRL_MSG_GET_STATS},
+		R: ch,
+	}
+
+	msg := <-ch
+	stats := msg.data.(*Stats)
+	return stats, nil
 }
