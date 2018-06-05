@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+
+	"github.com/garryfan2013/goget/source"
 )
 
 const (
@@ -13,12 +15,39 @@ const (
 	HeaderKeyRange         = "Range"
 )
 
+func init() {
+	source.Register(&HttpStreamReaderCreator{})
+	source.Register(&HttpsStreamReaderCreator{})
+}
+
+type HttpStreamReaderCreator struct{}
+
+func (*HttpStreamReaderCreator) Create() (source.StreamReader, error) {
+	sr := newHttpStreamReader().(source.StreamReader)
+	return sr, nil
+}
+
+func (*HttpStreamReaderCreator) Scheme() string {
+	return source.SchemeHTTP
+}
+
+type HttpsStreamReaderCreator struct{}
+
+func (*HttpsStreamReaderCreator) Create() (source.StreamReader, error) {
+	sr := newHttpStreamReader().(source.StreamReader)
+	return sr, nil
+}
+
+func (*HttpsStreamReaderCreator) Scheme() string {
+	return source.SchemeHTTPS
+}
+
 type HttpStreamReader struct {
 	url  string
 	clnt *http.Client
 }
 
-func NewHttpStreamReader() interface{} {
+func newHttpStreamReader() interface{} {
 	return new(HttpStreamReader)
 }
 

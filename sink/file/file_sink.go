@@ -3,14 +3,31 @@ package sink
 import (
 	"fmt"
 	"os"
+
+	"github.com/garryfan2013/goget/sink"
 )
+
+func init() {
+	sink.Register(&FileStreamWriterCreator{})
+}
+
+type FileStreamWriterCreator struct{}
+
+func (*FileStreamWriterCreator) Create() (sink.StreamWriter, error) {
+	sw := newFileStreamWriter().(sink.StreamWriter)
+	return sw, nil
+}
+
+func (*FileStreamWriterCreator) Scheme() string {
+	return sink.SchemeLocalFile
+}
 
 type FileStreamWriter struct {
 	fp   *os.File
 	path string
 }
 
-func NewFileStreamWriter() interface{} {
+func newFileStreamWriter() interface{} {
 	return new(FileStreamWriter)
 }
 

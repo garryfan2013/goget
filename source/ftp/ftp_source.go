@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/url"
 
-	"github.com/garryfan2013/goget/config"
 	"github.com/jlaffaye/ftp"
+
+	"github.com/garryfan2013/goget/config"
+	"github.com/garryfan2013/goget/source"
 )
 
 const (
@@ -15,13 +17,28 @@ const (
 	AnonymousPasswd = "anonymous"
 )
 
+func init() {
+	source.Register(&FtpStreamReaderCreator{})
+}
+
+type FtpStreamReaderCreator struct{}
+
+func (*FtpStreamReaderCreator) Create() (source.StreamReader, error) {
+	sr := newFtpStreamReader().(source.StreamReader)
+	return sr, nil
+}
+
+func (*FtpStreamReaderCreator) Scheme() string {
+	return SchemeFTP
+}
+
+func newFtpStreamReader() interface{} {
+	return new(FtpStreamReader)
+}
+
 type FtpStreamReader struct {
 	url     *url.URL
 	configs map[string]string
-}
-
-func NewFtpStreamReader() interface{} {
-	return new(FtpStreamReader)
 }
 
 func (fs *FtpStreamReader) Open(u string) error {

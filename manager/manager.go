@@ -32,6 +32,20 @@ var (
 
 type JobId uuid.UUID
 
+func (jid JobId) String() string {
+	id := uuid.UUID(jid)
+	return id.String()
+}
+
+func FromString(str string) (JobId, error) {
+	id, err := uuid.FromString(str)
+	if err != nil {
+		return InvalidJobId, err
+	}
+
+	return JobId(id), nil
+}
+
 type Job struct {
 	url      string
 	path     string
@@ -56,42 +70,52 @@ func GetInstance() *JobManager {
 	return instance
 }
 
-func GetProtocol(urlStr string) (int, error) {
+var ErrUnsupportedScheme = errors.New("Unsupported scheme")
+
+func getStreamReader(urlStr string) (source.StreamReader, error) {
 	fmtUrl, err := url.Parse(urlStr)
 	if err != nil {
-		return -1, err
+		return nil, err
 	}
 
-	switch fmtUrl.Scheme {
-	case SchemeHttp:
-	case SchemeHttps:
-		return source.HttpProtocol, nil
-	case SchemeFtp:
-		return source.FtpProtocol, nil
-	default:
+	ctor := source.Get(fmtUrl.Scheme)
+	if ctor == nil {
+		return nil, ErrUnsupportedScheme
 	}
 
-	return -1, fmt.Errorf("Unsupported url scheme: %s", fmtUrl)
+	return ctor.Create()
+}
+
+func getStreamWriter(scheme string) (sink.StreamWriter, error) {
+	ctor := sink.Get(scheme)
+	if ctor == nil {
+		return nil, ErrUnsupportedScheme
+	}
+
+	return ctor.Create()
+}
+
+func getProgressController(scheme string) (ProgressController, error) {
+	ctor := Get(scheme)
+	if ctor == nil {
+		return nil, ErrUnsupportedScheme
+	}
+
+	return ctor.Create()
 }
 
 func (jm *JobManager) Add(url string, filePath string, uname string, passwd string, cnt int) (JobId, error) {
-
-	protocol, err := GetProtocol(url)
+	src, err := getStreamReader(url)
 	if err != nil {
 		return InvalidJobId, err
 	}
 
-	src, err := source.NewStreamReader(protocol)
+	snk, err := getStreamWriter(sink.SchemeLocalFile)
 	if err != nil {
 		return InvalidJobId, err
 	}
 
-	snk, err := sink.NewStreamWriter(sink.LocalFileType)
-	if err != nil {
-		return InvalidJobId, err
-	}
-
-	ctrl, err := NewController(MultiTaskType)
+	ctrl, err := getProgressController(SchemePipeline)
 	if err != nil {
 		return InvalidJobId, err
 	}

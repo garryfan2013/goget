@@ -2,14 +2,34 @@ package source
 
 import (
 	"context"
-	"errors"
 	"io"
 )
 
 const (
-	HttpProtocol = 0
-	FtpProtocol  = 1
+	SchemeHTTP  = "http"
+	SchemeHTTPS = "https"
+	SchemeFTP   = "ftp"
 )
+
+var (
+	ctors = make(map[string]Creator)
+)
+
+func Register(c Creator) {
+	ctors[c.Scheme()] = c
+}
+
+func Get(scheme string) Creator {
+	if c, ok := ctors[scheme]; ok {
+		return c
+	}
+	return nil
+}
+
+type Creator interface {
+	Create() (StreamReader, error)
+	Scheme() string
+}
 
 type StreamReader interface {
 	Open(url string) error
@@ -17,34 +37,4 @@ type StreamReader interface {
 	SetConfig(key string, value string)
 	Get(ctx context.Context, offset int64, size int64) (io.ReadCloser, error)
 	Close()
-}
-
-type StreamReaderFactory struct {
-	Protocol int
-	Create   func() interface{}
-}
-
-var (
-	Factories []StreamReaderFactory = []StreamReaderFactory{
-		StreamReaderFactory{
-			Protocol: HttpProtocol,
-			Create:   NewHttpStreamReader},
-
-		StreamReaderFactory{
-			Protocol: FtpProtocol,
-			Create:   NewFtpStreamReader}}
-)
-
-func NewStreamReader(proto int) (StreamReader, error) {
-	if proto < HttpProtocol {
-		return nil, errors.New("Unsupported protocol")
-	}
-
-	if proto > FtpProtocol {
-		return nil, errors.New("Unsupported protocol")
-	}
-
-	f := Factories[proto]
-	var s StreamReader = f.Create().(StreamReader)
-	return s, nil
 }

@@ -1,4 +1,4 @@
-package manager
+package pipeline
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"sync"
 
 	"github.com/garryfan2013/goget/config"
+	"github.com/garryfan2013/goget/manager"
 	"github.com/garryfan2013/goget/sink"
 	"github.com/garryfan2013/goget/source"
 	"github.com/garryfan2013/goget/util"
-	"github.com/garryfan2013/goget/util/pipeline"
 )
 
 // Default value for config parameters
@@ -24,6 +24,21 @@ const (
 const (
 	CTRL_MSG_GET_STATS = 0
 )
+
+func init() {
+	manager.Register(&PipelineControllerCreator{})
+}
+
+type PipelineControllerCreator struct{}
+
+func (*PipelineControllerCreator) Create() (manager.ProgressController, error) {
+	sw := newPipelineController().(manager.ProgressController)
+	return sw, nil
+}
+
+func (*PipelineControllerCreator) Scheme() string {
+	return manager.SchemePipeline
+}
 
 // ReaderTaskGenerator-AsyncExecutor
 // Input(string): download url
@@ -84,7 +99,7 @@ func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
 		return tp, nil
 	}
 
-	return nil, pipeline.ErrIteratorEOF
+	return nil, util.ErrIteratorEOF
 }
 
 // Reader-AsyncExecutor
@@ -156,7 +171,7 @@ func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
 		if h.Left != 0 {
 			panic("ReaderHandler.Next reach EOF, but got not enough data")
 		}
-		return task, pipeline.ErrIteratorEOF
+		return task, util.ErrIteratorEOF
 	}
 
 	if err != nil {
@@ -169,7 +184,7 @@ func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
 	}
 
 	if h.Left == 0 {
-		return task, pipeline.ErrIteratorEOF
+		return task, util.ErrIteratorEOF
 	}
 
 	return task, nil
@@ -231,7 +246,7 @@ type PipelineController struct {
 	Cancel   context.CancelFunc
 }
 
-func NewPipelineController() interface{} {
+func newPipelineController() interface{} {
 	return new(PipelineController)
 }
 
@@ -302,19 +317,19 @@ func (pc *PipelineController) Start() error {
 	notifyCh := make(chan int64)
 
 	urlHandler := NewUrlRequestHandler(pc.Source, taskCount, notifyCh)
-	urlEx := pipeline.NewAsyncExecutor(urlHandler)
+	urlEx := util.NewAsyncExecutor(urlHandler)
 
-	crawlerExes := make([]pipeline.Executor, taskCount)
+	crawlerExes := make([]util.Executor, taskCount)
 	for i := 0; i < taskCount; i++ {
 		crawlerHandler := NewReaderTaskHandler(pc.Source, PoolBufferAllocSize)
-		crawlerExes[i] = pipeline.NewAsyncExecutor(crawlerHandler)
+		crawlerExes[i] = util.NewAsyncExecutor(crawlerHandler)
 	}
 
-	fanOutEx := pipeline.NewFanOutAsyncExecutor()
-	fanInEx := pipeline.NewFanInAsyncExecutor()
+	fanOutEx := util.NewFanOutAsyncExecutor()
+	fanInEx := util.NewFanInAsyncExecutor()
 
 	writerHandler := NewWriterTaskHandler(pc.Sink)
-	writerEx := pipeline.NewAsyncExecutor(writerHandler)
+	writerEx := util.NewAsyncExecutor(writerHandler)
 
 	// Start the url executor
 	taskCh, urlErrCh := urlEx.Run(ctx, startCh)

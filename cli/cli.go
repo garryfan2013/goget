@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
 	"github.com/garryfan2013/goget/manager"
+	pb "github.com/garryfan2013/goget/rpc/api"
 )
 
 /*
 	Example usage:
-	goget -c 5 -o ~/Downloads https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
+	cli -c 5 -o ./ https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
 
 	This will start 5 go routine concurrently, each will deal with the 1/5 of the total file size,
 	the successfully downloaded file will be stored at !/Downloads/zookeeper-3.4.12.tar.gz
@@ -68,9 +72,25 @@ func main() {
 		return
 	}
 
-	var jobManager *manager.JobManager = manager.GetInstance()
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithInsecure())
 
-	id, err := jobManager.Add(urlStr, savePath, userName, passwd, taskCount)
+	conn, err := grpc.Dial("127.0.0.1:8080", opts...)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	client := pb.NewGoGetClient(conn)
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	id, err := client.Add(ctx, &pb.Job{
+		Url:      urlStr,
+		Path:     savePath,
+		Username: userName,
+		Passwd:   passwd,
+		Cnt:      int64(taskCount)})
 	if err != nil {
 		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
 		return
@@ -80,7 +100,9 @@ func main() {
 	for {
 		<-time.After(time.Millisecond * 500)
 		count += 1
-		stats, err := jobManager.Progress(id)
+
+		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		stats, err := client.Progress(ctx, id)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -90,7 +112,8 @@ func main() {
 			fmt.Printf("\rJob progress: %d/%d %dkb/s", stats.Done, stats.Size, stats.Done/int64(count*1024/2))
 			if stats.Size == stats.Done {
 				fmt.Printf("\nJob Done\n")
-				jobManager.Stop(id)
+				ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+				client.Stop(ctx, id)
 				return
 			}
 		}
