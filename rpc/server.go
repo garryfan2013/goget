@@ -7,12 +7,11 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/garryfan2013/goget/manager"
 	pb "github.com/garryfan2013/goget/rpc/api"
 )
 
 type GogetServer struct {
-	jobManager *manager.JobManager
+	jobManager *JobManager
 }
 
 func (s *GogetServer) Add(ctx context.Context, job *pb.Job) (*pb.Id, error) {
@@ -25,7 +24,7 @@ func (s *GogetServer) Add(ctx context.Context, job *pb.Job) (*pb.Id, error) {
 }
 
 func (s *GogetServer) Progress(ctx context.Context, id *pb.Id) (*pb.Stats, error) {
-	jid, err := manager.FromString(id.Uuid)
+	jid, err := FromString(id.Uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +38,7 @@ func (s *GogetServer) Progress(ctx context.Context, id *pb.Id) (*pb.Stats, error
 }
 
 func (s *GogetServer) Stop(ctx context.Context, id *pb.Id) (*pb.Stats, error) {
-	jid, err := manager.FromString(id.Uuid)
+	jid, err := FromString(id.Uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +58,7 @@ func main() {
 		return
 	}
 
-	gogetServer := &GogetServer{jobManager: manager.GetInstance()}
+	gogetServer := &GogetServer{jobManager: GetInstance()}
 	grpcServer := grpc.NewServer()
 	pb.RegisterGoGetServer(grpcServer, gogetServer)
 	grpcServer.Serve(lis)
