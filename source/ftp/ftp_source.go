@@ -1,4 +1,4 @@
-package source
+package ftp
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func (*FtpStreamReaderCreator) Create() (source.StreamReader, error) {
 }
 
 func (*FtpStreamReaderCreator) Scheme() string {
-	return SchemeFTP
+	return source.SchemeFTP
 }
 
 func newFtpStreamReader() interface{} {

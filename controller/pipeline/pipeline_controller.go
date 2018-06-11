@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/garryfan2013/goget/config"
-	"github.com/garryfan2013/goget/manager"
+	"github.com/garryfan2013/goget/controller"
 	"github.com/garryfan2013/goget/sink"
 	"github.com/garryfan2013/goget/source"
 	"github.com/garryfan2013/goget/util"
@@ -26,18 +26,18 @@ const (
 )
 
 func init() {
-	manager.Register(&PipelineControllerCreator{})
+	controller.Register(&PipelineControllerCreator{})
 }
 
 type PipelineControllerCreator struct{}
 
-func (*PipelineControllerCreator) Create() (manager.ProgressController, error) {
-	sw := newPipelineController().(manager.ProgressController)
+func (*PipelineControllerCreator) Create() (controller.ProgressController, error) {
+	sw := newPipelineController().(controller.ProgressController)
 	return sw, nil
 }
 
 func (*PipelineControllerCreator) Scheme() string {
-	return manager.SchemePipeline
+	return controller.SchemePipeline
 }
 
 // ReaderTaskGenerator-AsyncExecutor
@@ -381,7 +381,7 @@ func (pc *PipelineController) Start() error {
 				case CTRL_MSG_GET_STATS:
 					msg.R <- &Message{
 						cmd: msg.M.cmd,
-						data: &Stats{
+						data: &controller.Stats{
 							Size: total,
 							Done: written,
 						}}
@@ -412,7 +412,7 @@ func (mc *PipelineController) Close() {
 	mc.Source.Close()
 }
 
-func (mc *PipelineController) Progress() (*Stats, error) {
+func (mc *PipelineController) Progress() (*controller.Stats, error) {
 	ch := make(chan *Message, 1)
 	mc.CtrlChan <- &Roundtrip{
 		M: Message{cmd: CTRL_MSG_GET_STATS},
@@ -420,6 +420,6 @@ func (mc *PipelineController) Progress() (*Stats, error) {
 	}
 
 	msg := <-ch
-	stats := msg.data.(*Stats)
+	stats := msg.data.(*controller.Stats)
 	return stats, nil
 }

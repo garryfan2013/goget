@@ -1,4 +1,4 @@
-package manager
+package controller
 
 import (
 	"github.com/garryfan2013/goget/sink"
