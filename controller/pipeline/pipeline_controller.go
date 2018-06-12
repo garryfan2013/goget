@@ -44,23 +44,23 @@ func (*PipelineControllerCreator) Scheme() string {
 // Input(string): download url
 // Output(ReaderTaskIterator): Iterator for reader task
 type UrlRequestHandler struct {
-	Source source.StreamReader
-	Tasks  []ReaderTask
-	P      int
-	Notify chan<- int64
+	src    source.StreamReader
+	tasks  []ReaderTask
+	pos    int
+	notify chan<- int64
 }
 
 type ReaderTask struct {
-	Offset int64
-	Size   int64
+	offset int64
+	size   int64
 }
 
 func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- int64) *UrlRequestHandler {
 	return &UrlRequestHandler{
-		Source: s,
-		Tasks:  make([]ReaderTask, n),
-		P:      0,
-		Notify: notify}
+		src:    s,
+		tasks:  make([]ReaderTask, n),
+		pos:    0,
+		notify: notify}
 }
 
 func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interface{}, error) {
@@ -70,22 +70,22 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, errors.New("Unexpected data type")
 	}
 
-	total, err := h.Source.Size(ctx)
+	total, err := h.src.Size(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Inform the controller of the whole file size
-	h.Notify <- total
+	h.notify <- total
 
-	cnt := len(h.Tasks)
+	cnt := len(h.tasks)
 	size := total / int64(cnt)
 
 	for i := 0; i < cnt; i++ {
-		h.Tasks[i].Offset = int64(i) * size
-		h.Tasks[i].Size = size
+		h.tasks[i].offset = int64(i) * size
+		h.tasks[i].size = size
 		if i == cnt-1 {
-			h.Tasks[i].Size = h.Tasks[i].Size + total%int64(cnt)
+			h.tasks[i].size = h.tasks[i].size + total%int64(cnt)
 		}
 	}
 
@@ -93,9 +93,9 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 }
 
 func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
-	if h.P < len(h.Tasks) {
-		var tp *ReaderTask = &h.Tasks[h.P]
-		h.P += 1
+	if h.pos < len(h.tasks) {
+		var tp *ReaderTask = &h.tasks[h.pos]
+		h.pos += 1
 		return tp, nil
 	}
 
@@ -106,28 +106,28 @@ func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
 // Input(ReaderTask): the specific offset and size of a target file block
 // Output([]byte): stream of block data
 type ReaderTaskHandler struct {
-	Source     source.StreamReader // Source crawler
-	RC         io.ReadCloser       // io interface obtained from crawler
-	BufferPool *sync.Pool          // This BufferPool will live as long as the ReaderTaskHandler
-	Offset     int64               // Block offset in the whole file
-	Size       int64               // Block size
-	Left       int64               // Block data remained to read
+	src        source.StreamReader // Source crawler
+	rc         io.ReadCloser       // io interface obtained from crawler
+	bufferPool *sync.Pool          // This BufferPool will live as long as the ReaderTaskHandler
+	offset     int64               // Block offset in the whole file
+	size       int64               // Block size
+	left       int64               // Block data remained to read
 }
 
 // It's the writer's duty to put the buffer back to the pool
 type WriterTask struct {
-	Buf        *util.StaticBuffer
-	BufferPool *sync.Pool
-	Offset     int64
+	buf        *util.StaticBuffer
+	bufferPool *sync.Pool
+	offset     int64
 }
 
 func NewReaderTaskHandler(s source.StreamReader, bs int64) *ReaderTaskHandler {
 	return &ReaderTaskHandler{
-		Source: s,
-		BufferPool: &sync.Pool{
+		src: s,
+		bufferPool: &sync.Pool{
 			New: func() interface{} {
 				t := new(WriterTask)
-				t.Buf = util.NewStaticBuffer(bs)
+				t.buf = util.NewStaticBuffer(bs)
 				return t
 			},
 		}}
@@ -140,50 +140,50 @@ func (h *ReaderTaskHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, errors.New("Unexpected data type")
 	}
 
-	h.Offset = t.Offset
-	h.Size = t.Size
-	h.Left = t.Size
+	h.offset = t.offset
+	h.size = t.size
+	h.left = t.size
 
-	rc, err := h.Source.Get(ctx, h.Offset, h.Size)
+	rc, err := h.src.Get(ctx, h.offset, h.size)
 	if err != nil {
 		return nil, err
 	}
 
-	h.RC = rc
+	h.rc = rc
 	return h, nil
 }
 
 // Implement the iterator interface
 func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
-	task := h.BufferPool.Get().(*WriterTask)
+	task := h.bufferPool.Get().(*WriterTask)
 
-	task.Buf.Reset()
-	task.Offset = h.Offset + h.Size - h.Left
-	task.BufferPool = h.BufferPool
+	task.buf.Reset()
+	task.offset = h.offset + h.size - h.left
+	task.bufferPool = h.bufferPool
 
-	n, err := task.Buf.ReadFrom(h.RC)
+	n, err := task.buf.ReadFrom(h.rc)
 
 	if n > 0 {
-		h.Left -= int64(n)
+		h.left -= int64(n)
 	}
 
 	if err == io.EOF {
-		if h.Left != 0 {
+		if h.left != 0 {
 			panic("ReaderHandler.Next reach EOF, but got not enough data")
 		}
 		return task, util.ErrIteratorEOF
 	}
 
 	if err != nil {
-		h.BufferPool.Put(task)
+		h.bufferPool.Put(task)
 		return task, err
 	}
 
-	if h.Left < 0 {
+	if h.left < 0 {
 		panic("ReaderTaskHandler.Next: left negative!")
 	}
 
-	if h.Left == 0 {
+	if h.left == 0 {
 		return task, util.ErrIteratorEOF
 	}
 
@@ -192,7 +192,7 @@ func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
 
 // Implement the Closer interface
 func (h *ReaderTaskHandler) Close() error {
-	h.RC.Close()
+	h.rc.Close()
 	return nil
 }
 
@@ -200,11 +200,11 @@ func (h *ReaderTaskHandler) Close() error {
 // Input([]byte): the actual data block
 // Output(bool): status
 type WriterTaskHandler struct {
-	Sink sink.StreamWriter
+	sw sink.StreamWriter
 }
 
 func NewWriterTaskHandler(s sink.StreamWriter) *WriterTaskHandler {
-	return &WriterTaskHandler{Sink: s}
+	return &WriterTaskHandler{sw: s}
 }
 
 func (h *WriterTaskHandler) Handle(ctx context.Context, arg interface{}) (interface{}, error) {
@@ -214,11 +214,11 @@ func (h *WriterTaskHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, errors.New("Unexpected data type")
 	}
 
-	defer t.BufferPool.Put(t)
+	defer t.bufferPool.Put(t)
 
-	wa := h.Sink.(io.WriterAt)
-	w := util.NewOffsetWriter(wa, t.Offset)
-	n, err := t.Buf.WriteTo(w)
+	wa := h.sw.(io.WriterAt)
+	w := util.NewOffsetWriter(wa, t.offset)
+	n, err := t.buf.WriteTo(w)
 	if err != nil {
 		return nil, err
 	}
@@ -233,17 +233,17 @@ type Message struct {
 }
 
 type Roundtrip struct {
-	M Message
-	R chan *Message
+	msg  Message
+	resp chan *Message
 }
 
 // PiplelineController constructor
 type PipelineController struct {
-	Configs  map[string]string
-	Source   source.StreamReader
-	Sink     sink.StreamWriter
-	CtrlChan chan *Roundtrip
-	Cancel   context.CancelFunc
+	configs map[string]string
+	src     source.StreamReader
+	snk     sink.StreamWriter
+	ctrl    chan *Roundtrip
+	cancel  context.CancelFunc
 }
 
 func newPipelineController() interface{} {
@@ -251,52 +251,52 @@ func newPipelineController() interface{} {
 }
 
 func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter) error {
-	pc.Configs = make(map[string]string)
-	pc.Source = c
-	pc.Sink = h
-	pc.CtrlChan = make(chan *Roundtrip)
+	pc.configs = make(map[string]string)
+	pc.src = c
+	pc.snk = h
+	pc.ctrl = make(chan *Roundtrip)
 
 	return nil
 }
 
 func (pc *PipelineController) SetConfig(key string, value string) {
-	pc.Configs[key] = value
+	pc.configs[key] = value
 }
 
 var cancel context.CancelFunc
 
 func (pc *PipelineController) Start() error {
-	if pc.Source == nil {
+	if pc.src == nil {
 		return errors.New("No source set yet")
 	}
 
-	if pc.Sink == nil {
+	if pc.snk == nil {
 		return errors.New("No sink set yet")
 	}
 
-	url, exists := pc.Configs[config.KeyRemoteUrl]
+	url, exists := pc.configs[config.KeyRemoteUrl]
 	if exists == false {
 		return errors.New("Source url not set!")
 	}
 
-	if err := pc.Source.Open(url); err != nil {
+	if err := pc.src.Open(url); err != nil {
 		return err
 	}
 
-	if user, exists := pc.Configs[config.KeyUserName]; exists {
-		pc.Source.SetConfig(config.KeyUserName, user)
+	if user, exists := pc.configs[config.KeyUserName]; exists {
+		pc.src.SetConfig(config.KeyUserName, user)
 	}
 
-	if passwd, exists := pc.Configs[config.KeyPasswd]; exists {
-		pc.Source.SetConfig(config.KeyPasswd, passwd)
+	if passwd, exists := pc.configs[config.KeyPasswd]; exists {
+		pc.src.SetConfig(config.KeyPasswd, passwd)
 	}
 
-	path, exists := pc.Configs[config.KeyLocalPath]
+	path, exists := pc.configs[config.KeyLocalPath]
 	if exists == false {
 		return errors.New("Sink path not set!")
 	}
 
-	taskCountStr, exists := pc.Configs[config.KeyTaskCount]
+	taskCountStr, exists := pc.configs[config.KeyTaskCount]
 	if exists == false {
 		return errors.New("TaskCount not set!")
 	}
@@ -305,30 +305,30 @@ func (pc *PipelineController) Start() error {
 		return err
 	}
 
-	if err := pc.Sink.Open(path); err != nil {
+	if err := pc.snk.Open(path); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	ctx, pc.Cancel = context.WithCancel(ctx)
+	ctx, pc.cancel = context.WithCancel(ctx)
 
 	// Prepare the start channel and notify channel
 	startCh := make(chan interface{})
 	notifyCh := make(chan int64)
 
-	urlHandler := NewUrlRequestHandler(pc.Source, taskCount, notifyCh)
+	urlHandler := NewUrlRequestHandler(pc.src, taskCount, notifyCh)
 	urlEx := util.NewAsyncExecutor(urlHandler)
 
 	crawlerExes := make([]util.Executor, taskCount)
 	for i := 0; i < taskCount; i++ {
-		crawlerHandler := NewReaderTaskHandler(pc.Source, PoolBufferAllocSize)
+		crawlerHandler := NewReaderTaskHandler(pc.src, PoolBufferAllocSize)
 		crawlerExes[i] = util.NewAsyncExecutor(crawlerHandler)
 	}
 
 	fanOutEx := util.NewFanOutAsyncExecutor()
 	fanInEx := util.NewFanInAsyncExecutor()
 
-	writerHandler := NewWriterTaskHandler(pc.Sink)
+	writerHandler := NewWriterTaskHandler(pc.snk)
 	writerEx := util.NewAsyncExecutor(writerHandler)
 
 	// Start the url executor
@@ -358,10 +358,6 @@ func (pc *PipelineController) Start() error {
 
 			// Recv the total size of this job
 			case total = <-notifyCh:
-				/*if written == total {
-					fmt.Printf("Progress: Done\n")
-					return
-				}*/
 
 			// Stats updated
 			case ret := <-counterCh:
@@ -371,16 +367,13 @@ func (pc *PipelineController) Start() error {
 				}
 
 				written += int64(cnt)
-				/*if written == total {
-					return
-				}*/
 
 			// Ctrl channel
-			case msg := <-pc.CtrlChan:
-				switch msg.M.cmd {
+			case rt := <-pc.ctrl:
+				switch rt.msg.cmd {
 				case CTRL_MSG_GET_STATS:
-					msg.R <- &Message{
-						cmd: msg.M.cmd,
+					rt.resp <- &Message{
+						cmd: rt.msg.cmd,
 						data: &controller.Stats{
 							Size: total,
 							Done: written,
@@ -400,23 +393,23 @@ func (pc *PipelineController) Start() error {
 }
 
 func (pc *PipelineController) Stop() error {
-	if pc.Cancel != nil {
-		pc.Cancel()
+	if pc.cancel != nil {
+		pc.cancel()
 	}
 
 	return nil
 }
 
 func (mc *PipelineController) Close() {
-	mc.Sink.Close()
-	mc.Source.Close()
+	mc.snk.Close()
+	mc.src.Close()
 }
 
 func (mc *PipelineController) Progress() (*controller.Stats, error) {
 	ch := make(chan *Message, 1)
-	mc.CtrlChan <- &Roundtrip{
-		M: Message{cmd: CTRL_MSG_GET_STATS},
-		R: ch,
+	mc.ctrl <- &Roundtrip{
+		msg:  Message{cmd: CTRL_MSG_GET_STATS},
+		resp: ch,
 	}
 
 	msg := <-ch
