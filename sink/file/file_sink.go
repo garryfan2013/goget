@@ -56,5 +56,8 @@ func (fs *FileStreamWriter) WriteAt(data []byte, offset int64) (int, error) {
 }
 
 func (fs *FileStreamWriter) Close() error {
-	return fs.fp.Close()
+	if fs.fp != nil {
+		return fs.fp.Close()
+	}
+	return nil
 }

@@ -23,7 +23,19 @@ service GoGet {
   //
   // Add a goget job.
   //
-  rpc Add(Job) returns (Id) {}
+  rpc Add(Job) returns (JobInfo) {}
+
+  // A simple RPC.
+  //
+  // Get a goget job info.
+  //
+  rpc Get(Id) returns (JobInfo) {}
+
+  // A simple RPC.
+  //
+  // Add a goget job.
+  //
+  rpc GetAll(Empty) returns (stream JobInfo) {}
 
   // A server-to-client RPC.
   //
@@ -35,7 +47,7 @@ service GoGet {
   //
   // Accepts a job id
   //
-  rpc Stop(Id) returns (Stats) {}
+  rpc Stop(Id) returns (Empty) {}
 }
 
 // A job represents a download, provided with neccessary information
@@ -56,6 +68,20 @@ message Job {
   int64 cnt = 5;
 }
 
+message JobInfo {
+  // The id of the job
+  string id = 1;
+
+  // The url of the resource to be downloaded
+  string url = 2;
+
+  // The file path to be saved
+  string path = 3;
+
+  // The cnt indicates the thread count for cocurrent downloading
+  int64 cnt = 4;
+}
+
 // A Id represent a specified job
 message Id {
   // The string format of given uuid
@@ -71,8 +97,7 @@ message Stats {
   int64 done = 2;
 }
 
-// A Id represent a specified job
-message Result {
-  // The string format of given uuid
-  string uuid = 1;
+// A empty message means void
+message Empty {
+  
 }

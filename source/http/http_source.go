@@ -78,7 +78,6 @@ func (hs *HttpStreamReader) Size(ctx context.Context) (int64, error) {
 	}
 
 	str := resp.Header.Get(HeaderKeyContentLength)
-	fmt.Printf("Content-Length: %s\n", str)
 	len, err := strconv.Atoi(str)
 	if err != nil {
 		return 0, err

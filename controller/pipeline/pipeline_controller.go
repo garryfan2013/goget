@@ -400,14 +400,18 @@ func (pc *PipelineController) Stop() error {
 	return nil
 }
 
-func (mc *PipelineController) Close() {
-	mc.snk.Close()
-	mc.src.Close()
+func (pc *PipelineController) Close() {
+	if pc.cancel != nil {
+		pc.cancel()
+	}
+
+	pc.snk.Close()
+	pc.src.Close()
 }
 
-func (mc *PipelineController) Progress() (*controller.Stats, error) {
+func (pc *PipelineController) Progress() (*controller.Stats, error) {
 	ch := make(chan *Message, 1)
-	mc.ctrl <- &Roundtrip{
+	pc.ctrl <- &Roundtrip{
 		msg:  Message{cmd: CTRL_MSG_GET_STATS},
 		resp: ch,
 	}

@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/garryfan2013/goget/manager"
 	pb "github.com/garryfan2013/goget/rpc/api"
 )
 
@@ -25,7 +25,14 @@ const (
 )
 
 var (
+	listAllJobs bool
+
+	listSingle    bool
+	queryProgress bool
+	id            string
+
 	printHelp bool
+
 	taskCount int
 	savePath  string
 	userName  string
@@ -33,8 +40,16 @@ var (
 )
 
 func init() {
+	flag.BoolVar(&listAllJobs, "L", false, "List all current jobs' information")
+
+	flag.BoolVar(&listSingle, "l", false, "List single job's information")
+	flag.StringVar(&id, "i", "", "job id")
+
+	flag.BoolVar(&queryProgress, "q", false, "Query progress of job by id")
+
 	flag.BoolVar(&printHelp, "h", false, "Printf help messages")
-	flag.IntVar(&taskCount, "c", manager.DefaultTaskCount, "Multi-task count for concurrent downloading")
+
+	flag.IntVar(&taskCount, "c", 5, "Multi-task count for concurrent downloading")
 	flag.StringVar(&savePath, "o", "./", "The specified download file saved path")
 	flag.StringVar(&userName, "u", "", "username for authentication")
 	flag.StringVar(&passwd, "p", "", "passwd for authentication")
@@ -42,9 +57,117 @@ func init() {
 
 func usage() {
 	fmt.Printf("goget version: %s\n", Version)
-	fmt.Printf("Usage: goget [-h] [-o save_file_path] [-c task_count] [-u username] [-p passwd] remote_url\n\n")
+	fmt.Printf("Usage: goget [-L] [-l -i id] [-h] [[-o save_file_path] [-c task_count] [-u username] [-p passwd] remote_url]\n\n")
 	fmt.Printf("Options:\n")
 	flag.PrintDefaults()
+}
+
+func dialRPCServer() (*grpc.ClientConn, error) {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithInsecure())
+
+	conn, err := grpc.Dial("127.0.0.1:8080", opts...)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+func listAll() {
+	conn, err := dialRPCServer()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	client := pb.NewGoGetClient(conn)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	stream, err := client.GetAll(ctx, &pb.Empty{})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for {
+		info, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		fmt.Println(info)
+	}
+}
+
+func list(jid string) {
+	conn, err := dialRPCServer()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	client := pb.NewGoGetClient(conn)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	info, err := client.Get(ctx, &pb.Id{Uuid: jid})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(info)
+}
+
+func progress(jid string) {
+	conn, err := dialRPCServer()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	client := pb.NewGoGetClient(conn)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	stat, err := client.Progress(ctx, &pb.Id{Uuid: jid})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(stat)
+}
+
+func Add(url string, path string, username string, passwd string, cnt int) {
+	conn, err := dialRPCServer()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	client := pb.NewGoGetClient(conn)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	info, err := client.Add(ctx, &pb.Job{
+		Url:      url,
+		Path:     path,
+		Username: username,
+		Passwd:   passwd,
+		Cnt:      int64(cnt)})
+	if err != nil {
+		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
+		return
+	}
+
+	fmt.Println(info)
 }
 
 func main() {
@@ -58,12 +181,6 @@ func main() {
 		return
 	}
 
-	var urlStr string
-	if urlStr = flag.Arg(0); urlStr == "" {
-		usage()
-		return
-	}
-
 	/*
 		print help messages
 	*/
@@ -72,50 +189,49 @@ func main() {
 		return
 	}
 
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithInsecure())
-
-	conn, err := grpc.Dial("127.0.0.1:8080", opts...)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := pb.NewGoGetClient(conn)
-
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	id, err := client.Add(ctx, &pb.Job{
-		Url:      urlStr,
-		Path:     savePath,
-		Username: userName,
-		Passwd:   passwd,
-		Cnt:      int64(taskCount)})
-	if err != nil {
-		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
+	/*
+		List all jobs
+	*/
+	if listAllJobs == true {
+		listAll()
 		return
 	}
 
-	var count int
-	for {
-		<-time.After(time.Millisecond * 500)
-		count += 1
-
-		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-		stats, err := client.Progress(ctx, id)
-		if err != nil {
-			fmt.Println(err)
+	/*
+		List single job with id
+	*/
+	if listSingle == true {
+		if id == "" {
+			usage()
 			return
 		}
 
-		if stats.Size > 0 {
-			fmt.Printf("\rJob progress: %d/%d %dkb/s", stats.Done, stats.Size, stats.Done/int64(count*1024/2))
-			if stats.Size == stats.Done {
-				fmt.Printf("\nJob Done\n")
-				ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-				client.Stop(ctx, id)
-				return
-			}
-		}
+		list(id)
+		return
 	}
+
+	/*
+		Get the progress info for job with id
+	*/
+	if queryProgress == true {
+		if id == "" {
+			usage()
+			return
+		}
+
+		progress(id)
+		return
+	}
+
+	/*
+		Here we deal with the download job
+	*/
+	var urlStr string
+	if urlStr = flag.Arg(0); urlStr == "" {
+		usage()
+		return
+	}
+
+	Add(urlStr, savePath, userName, passwd, taskCount)
+	return
 }
