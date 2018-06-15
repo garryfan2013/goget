@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	builders map[string]Builder = make(map[string]Builder)
+	builders = make(map[string]Builder)
 )
 
 type Stats struct {

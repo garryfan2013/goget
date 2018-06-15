@@ -1,6 +1,7 @@
 package sink
 
 import (
+	"errors"
 	"io"
 )
 
@@ -32,4 +33,13 @@ type StreamWriter interface {
 	Open(path string) error
 	io.WriterAt
 	Close() error
+}
+
+func GetStreamWriter(scheme string) (StreamWriter, error) {
+	ctor, exists := ctors[scheme]
+	if !exists {
+		return nil, errors.New("Unsupported sink scheme")
+	}
+
+	return ctor.Create()
 }

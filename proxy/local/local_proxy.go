@@ -64,38 +64,6 @@ func getInstance() *JobManager {
 	return instance
 }
 
-func getStreamReader(urlStr string) (source.StreamReader, error) {
-	fmtUrl, err := url.Parse(urlStr)
-	if err != nil {
-		return nil, err
-	}
-
-	ctor := source.Get(fmtUrl.Scheme)
-	if ctor == nil {
-		return nil, ErrUnsupportedScheme
-	}
-
-	return ctor.Create()
-}
-
-func getStreamWriter(scheme string) (sink.StreamWriter, error) {
-	ctor := sink.Get(scheme)
-	if ctor == nil {
-		return nil, ErrUnsupportedScheme
-	}
-
-	return ctor.Create()
-}
-
-func getProgressController(scheme string) (controller.ProgressController, error) {
-	ctor := controller.Get(scheme)
-	if ctor == nil {
-		return nil, ErrUnsupportedScheme
-	}
-
-	return ctor.Create()
-}
-
 type JobManagerBuilder struct{}
 
 /*
@@ -140,18 +108,23 @@ func (jm *JobManager) GetAll() ([]*proxy.JobInfo, error) {
 	return jobs, nil
 }
 
-func (jm *JobManager) Add(url string, filePath string, uname string, passwd string, cnt int) (*proxy.JobInfo, error) {
-	src, err := getStreamReader(url)
+func (jm *JobManager) Add(urlStr string, filePath string, uname string, passwd string, cnt int) (*proxy.JobInfo, error) {
+	fmtUrl, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
 	}
 
-	snk, err := getStreamWriter(sink.SchemeLocalFile)
+	src, err := source.GetStreamReader(fmtUrl.Scheme)
 	if err != nil {
 		return nil, err
 	}
 
-	ctrl, err := getProgressController(controller.SchemePipeline)
+	snk, err := sink.GetStreamWriter(sink.SchemeLocalFile)
+	if err != nil {
+		return nil, err
+	}
+
+	ctrl, err := controller.GetProgressController(controller.SchemePipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +138,9 @@ func (jm *JobManager) Add(url string, filePath string, uname string, passwd stri
 		}
 	}()
 
-	savePath := fmt.Sprintf("%s/%s", filePath, path.Base(url))
+	savePath := fmt.Sprintf("%s/%s", filePath, path.Base(urlStr))
 
-	ctrl.SetConfig(config.KeyRemoteUrl, url)
+	ctrl.SetConfig(config.KeyRemoteUrl, urlStr)
 	ctrl.SetConfig(config.KeyLocalPath, savePath)
 
 	if cnt <= 0 {
@@ -200,7 +173,7 @@ func (jm *JobManager) Add(url string, filePath string, uname string, passwd stri
 	}
 
 	jm.jobs[id] = &Job{
-		url:      url,
+		url:      urlStr,
 		path:     filePath,
 		userName: uname,
 		passwd:   passwd,
@@ -211,7 +184,7 @@ func (jm *JobManager) Add(url string, filePath string, uname string, passwd stri
 
 	return &proxy.JobInfo{
 		Id:   id,
-		Url:  url,
+		Url:  urlStr,
 		Path: filePath,
 	}, nil
 }

@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+
 	"github.com/garryfan2013/goget/sink"
 	"github.com/garryfan2013/goget/source"
 )
@@ -17,13 +19,6 @@ func Register(c Creator) {
 	ctors[c.Scheme()] = c
 }
 
-func Get(scheme string) Creator {
-	if c, ok := ctors[scheme]; ok {
-		return c
-	}
-	return nil
-}
-
 type Creator interface {
 	Create() (ProgressController, error)
 	Scheme() string
@@ -31,9 +26,13 @@ type Creator interface {
 
 type Controller interface {
 	Open(src source.StreamReader, sink sink.StreamWriter) error
+
 	SetConfig(key string, value string)
+
 	Start() error
+
 	Stop() error
+
 	Close()
 }
 
@@ -49,4 +48,13 @@ type Progresser interface {
 type ProgressController interface {
 	Controller
 	Progresser
+}
+
+func GetProgressController(scheme string) (ProgressController, error) {
+	ctor, exists := ctors[scheme]
+	if !exists {
+		return nil, errors.New("Unsupported controller scheme")
+	}
+
+	return ctor.Create()
 }
