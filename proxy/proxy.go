@@ -8,11 +8,11 @@ import (
 const (
 	ProxyLocal = "localProxy"
 	ProxyRPC   = "rpcProxy"
-	ProxyREST  = "rpcRest"
+	ProxyREST  = "restProxy"
 )
 
 var (
-	builders map[string]Builder
+	builders map[string]Builder = make(map[string]Builder)
 )
 
 type Stats struct {

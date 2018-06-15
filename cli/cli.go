@@ -3,18 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
-	"time"
 
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-
-	pb "github.com/garryfan2013/goget/rpc/api"
+	"github.com/garryfan2013/goget/proxy"
+	_ "github.com/garryfan2013/goget/proxy/local"
+	_ "github.com/garryfan2013/goget/proxy/rpc_proxy"
 )
 
 /*
 	Example usage:
-	cli -c 5 -o ./ https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
+	./cli.exe -c 5 -o ./ https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
 
 	This will start 5 go routine concurrently, each will deal with the 1/5 of the total file size,
 	the successfully downloaded file will be stored at !/Downloads/zookeeper-3.4.12.tar.gz
@@ -29,6 +26,7 @@ var (
 
 	listSingle    bool
 	queryProgress bool
+	deleteSingle  bool
 	id            string
 
 	printHelp bool
@@ -43,6 +41,7 @@ func init() {
 	flag.BoolVar(&listAllJobs, "L", false, "List all current jobs' information")
 
 	flag.BoolVar(&listSingle, "l", false, "List single job's information")
+	flag.BoolVar(&deleteSingle, "d", false, "Delete single job")
 	flag.StringVar(&id, "i", "", "job id")
 
 	flag.BoolVar(&queryProgress, "q", false, "Query progress of job by id")
@@ -60,114 +59,6 @@ func usage() {
 	fmt.Printf("Usage: goget [-L] [-l -i id] [-h] [[-o save_file_path] [-c task_count] [-u username] [-p passwd] remote_url]\n\n")
 	fmt.Printf("Options:\n")
 	flag.PrintDefaults()
-}
-
-func dialRPCServer() (*grpc.ClientConn, error) {
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithInsecure())
-
-	conn, err := grpc.Dial("127.0.0.1:8080", opts...)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-func listAll() {
-	conn, err := dialRPCServer()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := pb.NewGoGetClient(conn)
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-
-	stream, err := client.GetAll(ctx, &pb.Empty{})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	for {
-		info, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		fmt.Println(info)
-	}
-}
-
-func list(jid string) {
-	conn, err := dialRPCServer()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := pb.NewGoGetClient(conn)
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-
-	info, err := client.Get(ctx, &pb.Id{Uuid: jid})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	fmt.Println(info)
-}
-
-func progress(jid string) {
-	conn, err := dialRPCServer()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := pb.NewGoGetClient(conn)
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-
-	stat, err := client.Progress(ctx, &pb.Id{Uuid: jid})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	fmt.Println(stat)
-}
-
-func Add(url string, path string, username string, passwd string, cnt int) {
-	conn, err := dialRPCServer()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := pb.NewGoGetClient(conn)
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-
-	info, err := client.Add(ctx, &pb.Job{
-		Url:      url,
-		Path:     path,
-		Username: username,
-		Passwd:   passwd,
-		Cnt:      int64(cnt)})
-	if err != nil {
-		fmt.Printf("JobManager Add Job failed: %s\n", err.Error())
-		return
-	}
-
-	fmt.Println(info)
 }
 
 func main() {
@@ -189,11 +80,24 @@ func main() {
 		return
 	}
 
+	pm, err := proxy.GetProxyManager(proxy.ProxyRPC)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	/*
 		List all jobs
 	*/
 	if listAllJobs == true {
-		listAll()
+		jobs, err := pm.GetAll()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		for _, job := range jobs {
+			fmt.Printf("Id: %s, Url: %s, Path: %s\n", job.Id, job.Url, job.Path)
+		}
 		return
 	}
 
@@ -206,7 +110,32 @@ func main() {
 			return
 		}
 
-		list(id)
+		job, err := pm.Get(id)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Id: %s, Url: %s, Path: %s\n", job.Id, job.Url, job.Path)
+		return
+	}
+
+	/*
+		Delete single job with id
+	*/
+	if deleteSingle == true {
+		if id == "" {
+			usage()
+			return
+		}
+
+		err := pm.Delete(id)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Job-%s deleted\n", id)
 		return
 	}
 
@@ -219,7 +148,13 @@ func main() {
 			return
 		}
 
-		progress(id)
+		stat, err := pm.Progress(id)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Job-%s progress: %d/%d\n", id, stat.Done, stat.Size)
 		return
 	}
 
@@ -232,6 +167,10 @@ func main() {
 		return
 	}
 
-	Add(urlStr, savePath, userName, passwd, taskCount)
+	_, err = pm.Add(urlStr, savePath, userName, passwd, taskCount)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	return
 }

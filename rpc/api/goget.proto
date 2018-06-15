@@ -48,6 +48,12 @@ service GoGet {
   // Accepts a job id
   //
   rpc Stop(Id) returns (Empty) {}
+
+  // A client-to-server RPC.
+  //
+  // Accepts a job id
+  //
+  rpc Delete(Id) returns (Empty) {}
 }
 
 // A job represents a download, provided with neccessary information

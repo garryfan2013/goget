@@ -85,6 +85,15 @@ func (s *GogetServer) Stop(ctx context.Context, id *pb.Id) (*pb.Empty, error) {
 	return &pb.Empty{}, nil
 }
 
+func (s *GogetServer) Delete(ctx context.Context, id *pb.Id) (*pb.Empty, error) {
+	err := s.pm.Delete(id.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.Empty{}, nil
+}
+
 func main() {
 	lis, err := net.Listen("tcp", "0.0.0.0:8080")
 	if err != nil {
