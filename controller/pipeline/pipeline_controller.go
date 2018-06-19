@@ -22,7 +22,11 @@ const (
 
 // Control message definition
 const (
-	CTRL_MSG_GET_STATS = 0
+	CTRL_MSG_GET_STATS = iota
+)
+
+const (
+	NOTIFY_MSG_STREAM_INFO = iota + 1000
 )
 
 func init() {
@@ -47,7 +51,7 @@ type UrlRequestHandler struct {
 	src    source.StreamReader
 	tasks  []ReaderTask
 	pos    int
-	notify chan<- int64
+	notify chan<- *Roundtrip
 }
 
 type ReaderTask struct {
@@ -55,7 +59,7 @@ type ReaderTask struct {
 	size   int64
 }
 
-func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- int64) *UrlRequestHandler {
+func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- *Roundtrip) *UrlRequestHandler {
 	return &UrlRequestHandler{
 		src:    s,
 		tasks:  make([]ReaderTask, n),
@@ -75,19 +79,34 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, err
 	}
 
-	// Inform the controller of the whole file size
-	h.notify <- total
-
 	cnt := len(h.tasks)
 	size := total / int64(cnt)
-
+	stats := make([]workerStats, cnt)
 	for i := 0; i < cnt; i++ {
 		h.tasks[i].offset = int64(i) * size
 		h.tasks[i].size = size
 		if i == cnt-1 {
 			h.tasks[i].size = h.tasks[i].size + total%int64(cnt)
 		}
+		stats[i].offset = h.tasks[i].offset
+		stats[i].size = h.tasks[i].size
 	}
+
+	// Inform the controller of the stream information
+	// This is a RountdTrip message since we dont want to start workers until
+	// controller get the stream info
+	resp := make(chan *Message)
+	h.notify <- &Roundtrip{
+		msg: Message{
+			cmd: NOTIFY_MSG_STREAM_INFO,
+			data: &streamInfo{
+				total: total,
+				stats: stats,
+			},
+		},
+		resp: resp,
+	}
+	<-resp
 
 	return h, nil
 }
@@ -203,6 +222,11 @@ type WriterTaskHandler struct {
 	sw sink.StreamWriter
 }
 
+type writeInfo struct {
+	size   int64
+	offset int64
+}
+
 func NewWriterTaskHandler(s sink.StreamWriter) *WriterTaskHandler {
 	return &WriterTaskHandler{sw: s}
 }
@@ -223,7 +247,10 @@ func (h *WriterTaskHandler) Handle(ctx context.Context, arg interface{}) (interf
 		return nil, err
 	}
 
-	return n, nil
+	return &writeInfo{
+		offset: t.offset,
+		size:   int64(n),
+	}, nil
 }
 
 // Sync request-response module
@@ -234,16 +261,31 @@ type Message struct {
 
 type Roundtrip struct {
 	msg  Message
-	resp chan *Message
+	resp chan<- *Message
 }
 
 // PiplelineController constructor
 type PipelineController struct {
-	configs map[string]string
-	src     source.StreamReader
-	snk     sink.StreamWriter
-	ctrl    chan *Roundtrip
-	cancel  context.CancelFunc
+	configs map[string]string   // config params map
+	src     source.StreamReader // source
+	snk     sink.StreamWriter   // sink
+	ctrl    chan *Roundtrip     // The ctrl channel for pipeline
+	cancel  context.CancelFunc  // Cancel function
+	stats   []workerStats       // This is the stats slice for all reader workers
+	total   int64               // This indicates the total lengh of the file stream
+	done    int64               // This indicates the finished bytes
+}
+
+type streamInfo struct {
+	total int64
+	stats []workerStats
+}
+
+// the worker stats indicate the progress of a single worker routine
+type workerStats struct {
+	size   int64
+	offset int64
+	Done   int64
 }
 
 func newPipelineController() interface{} {
@@ -262,8 +304,6 @@ func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter) e
 func (pc *PipelineController) SetConfig(key string, value string) {
 	pc.configs[key] = value
 }
-
-var cancel context.CancelFunc
 
 func (pc *PipelineController) Start() error {
 	if pc.src == nil {
@@ -314,7 +354,7 @@ func (pc *PipelineController) Start() error {
 
 	// Prepare the start channel and notify channel
 	startCh := make(chan interface{})
-	notifyCh := make(chan int64)
+	notifyCh := make(chan *Roundtrip)
 
 	urlHandler := NewUrlRequestHandler(pc.src, taskCount, notifyCh)
 	urlEx := util.NewAsyncExecutor(urlHandler)
@@ -343,8 +383,7 @@ func (pc *PipelineController) Start() error {
 	// Start the writer executor
 	counterCh, writerErrCh := writerEx.Run(ctx, fanInCh)
 
-	var written, total int64
-
+	var sinfo *streamInfo
 	go func() {
 		for {
 			select {
@@ -357,16 +396,36 @@ func (pc *PipelineController) Start() error {
 				fmt.Printf("writerErrCh: %s\n", e.Error())
 
 			// Recv the total size of this job
-			case total = <-notifyCh:
+			case rt := <-notifyCh:
+				switch rt.msg.cmd {
+				case NOTIFY_MSG_STREAM_INFO:
+					sinfo = rt.msg.data.(*streamInfo)
+					pc.stats = sinfo.stats
+					pc.total = sinfo.total
+
+					if rt.resp != nil {
+						rt.resp <- &Message{
+							cmd:  rt.msg.cmd,
+							data: nil,
+						}
+					}
+				}
 
 			// Stats updated
 			case ret := <-counterCh:
-				cnt, ok := ret.(int)
+				wi, ok := ret.(*writeInfo)
 				if !ok {
-					panic("counterCh ret cant type switch to int")
+					panic("counterCh ret cant type switch to writeInfo")
 				}
 
-				written += int64(cnt)
+				for i, _ := range pc.stats {
+					if pc.stats[i].offset+pc.stats[i].size >= wi.offset+wi.size {
+						if pc.stats[i].offset <= wi.offset {
+							pc.stats[i].Done += wi.size
+							pc.done += wi.size
+						}
+					}
+				}
 
 			// Ctrl channel
 			case rt := <-pc.ctrl:
@@ -375,8 +434,8 @@ func (pc *PipelineController) Start() error {
 					rt.resp <- &Message{
 						cmd: rt.msg.cmd,
 						data: &controller.Stats{
-							Size: total,
-							Done: written,
+							Size: pc.total,
+							Done: pc.done,
 						}}
 				}
 
