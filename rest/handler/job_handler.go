@@ -8,25 +8,21 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/garryfan2013/goget/proxy"
-	_ "github.com/garryfan2013/goget/proxy/local"
-	_ "github.com/garryfan2013/goget/proxy/rpc_proxy"
 	"github.com/garryfan2013/goget/rest/model"
 )
 
-var (
-	pm proxy.ProxyManager
+const (
+	BadInterfaceValue = "Interface cant convert to proxy.ProxyManager"
 )
 
-func init() {
-	pm, _ = proxy.GetProxyManager(proxy.ProxyRPC)
-	if pm == nil {
-		panic("Cant get proxy manager for RPC")
-	}
-}
-
-func GetJobHandler(w http.ResponseWriter, r *http.Request) {
+func GetJobHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
 	vars := mux.Vars(r)
 	id := vars["id"]
+
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
+	}
 
 	job, err := pm.Get(id)
 	if err != nil {
@@ -51,7 +47,12 @@ func GetJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetJobsHandler(w http.ResponseWriter, r *http.Request) {
+func GetJobsHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
+	}
+
 	nativeJobs, err := pm.GetAll()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -72,13 +73,18 @@ func GetJobsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func PostJobHandler(w http.ResponseWriter, r *http.Request) {
+func PostJobHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
 	var job model.Job
 	err := json.NewDecoder(r.Body).Decode(&job)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
 	}
 
 	nativeJob, err := pm.Add(job.Url, job.Path, job.UserName, job.Passwd, job.Count)
@@ -97,7 +103,7 @@ func PostJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func PostJobActionHandler(w http.ResponseWriter, r *http.Request) {
+func PostJobActionHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -106,6 +112,11 @@ func PostJobActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
 	}
 
 	if action.Action == model.ActionStop {
@@ -117,9 +128,14 @@ func PostJobActionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetJobProgressHandler(w http.ResponseWriter, r *http.Request) {
+func GetJobProgressHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
 	vars := mux.Vars(r)
 	id := vars["id"]
+
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
+	}
 
 	nativeStat, err := pm.Progress(id)
 	if err != nil {
@@ -136,9 +152,14 @@ func GetJobProgressHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func DeleteJobHandler(w http.ResponseWriter, r *http.Request) {
+func DeleteJobHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
 	vars := mux.Vars(r)
 	id := vars["id"]
+
+	pm, ok := d.(proxy.ProxyManager)
+	if !ok {
+		panic(BadInterfaceValue)
+	}
 
 	err := pm.Delete(id)
 	if err != nil {
