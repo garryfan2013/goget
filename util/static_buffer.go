@@ -131,6 +131,13 @@ func (sb *StaticBuffer) Cap() int64 {
 	return int64(len(sb.Buf))
 }
 
+func (sb *StaticBuffer) Size() int64 {
+	if sb.R < sb.W {
+		panic("Buffer Read point exceeds the boundary")
+	}
+	return sb.W - sb.R
+}
+
 func (sb *StaticBuffer) Reset() {
 	sb.W = 0
 	sb.R = 0
