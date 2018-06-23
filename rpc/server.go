@@ -88,6 +88,15 @@ func (s *RpcServer) Progress(ctx context.Context, id *pb.Id) (*pb.Stats, error) 
 	}, nil
 }
 
+func (s *RpcServer) Start(ctx context.Context, id *pb.Id) (*pb.Empty, error) {
+	err := s.pm.Start(id.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.Empty{}, nil
+}
+
 func (s *RpcServer) Stop(ctx context.Context, id *pb.Id) (*pb.Empty, error) {
 	err := s.pm.Stop(id.Uuid)
 	if err != nil {

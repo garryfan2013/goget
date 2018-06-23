@@ -13,6 +13,8 @@ const (
 
 var (
 	builders = make(map[string]Builder)
+
+	ErrJobNotExists = errors.New("Job not exists")
 )
 
 type Stats struct {
@@ -34,6 +36,8 @@ type ProxyManager interface {
 	GetAll() ([]*JobInfo, error)
 
 	Progress(id string) (*Stats, error)
+
+	Start(id string) error
 
 	Stop(id string) error
 

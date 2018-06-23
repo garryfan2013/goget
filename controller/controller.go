@@ -24,27 +24,86 @@ type Creator interface {
 	Scheme() string
 }
 
+/*
+	The main interface for a controller
+*/
 type Controller interface {
-	Open(src source.StreamReader, sink sink.StreamWriter) error
+	Open(src source.StreamReader, sink sink.StreamWriter, sm StatsManager) error
 
 	SetConfig(key string, value string)
 
+	/*
+		Start the controller
+	*/
 	Start() error
 
+	/*
+		Stop a controller
+		When a controller is stopped, all the workers are supposed to quit
+		It's supposed to initialize new workers when calling Start() again
+	*/
 	Stop() error
 
+	/*
+		Close a controller, responsible for releasing the related resources
+	*/
 	Close()
 }
 
 type Stats struct {
-	Size int64
-	Done int64
+	Offset int64 // The offset for this worker to start data download
+	Size   int64 // The size of data to download
+	Done   int64 // The number of bytes has been downloaded
 }
 
+const (
+	NotifyEventDone = iota
+)
+
+/*
+	The StatsManager interface provide methods for controller to
+	retrieve and update workers' status of current job
+	This interface is likely implemented by a uppper level component
+	which operates and manages the controller
+*/
+type StatsManager interface {
+	/*
+		Retrieve return the stats information of current job's workers
+
+		The returned *Stats slice would be nil, if no stats information stored
+		Which means that the job probably is newly added and not started
+
+		For job that's done or stopped, the Retrieve returns the last status
+		of the job workers' information
+	*/
+	Retrieve() ([]*Stats, int64, int64)
+
+	/*
+		Since the controller does know the exact status of current job,
+		the update method provide a way for controller component to update the
+		status information of job's workers
+	*/
+	Update([]*Stats) error
+
+	/*
+		Notify the upper component that some event's occured
+		the event is one of the NotifyEventXxxx consts
+	*/
+	Notify(event int) error
+}
+
+/*
+	The progresser interface provide method for upper level component
+	to retrieve the job information
+	This interface should be implemented by specific controller
+*/
 type Progresser interface {
 	Progress() (*Stats, error)
 }
 
+/*
+	A specific controller needs to implement both interface
+*/
 type ProgressController interface {
 	Controller
 	Progresser

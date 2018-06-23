@@ -11,7 +11,7 @@ import (
 
 /*
 	Example usage:
-	./cli.exe -c 5 -o ./ https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
+	./cli.exe -a https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/stable/zookeeper-3.4.12.tar.gz
 
 	This will start 5 go routine concurrently, each will deal with the 1/5 of the total file size,
 	the successfully downloaded file will be stored at !/Downloads/zookeeper-3.4.12.tar.gz
@@ -24,13 +24,15 @@ const (
 var (
 	listAllJobs bool
 
+	startJob      bool
+	stopJob       bool
 	listSingle    bool
 	queryProgress bool
 	deleteSingle  bool
-	id            string
 
 	printHelp bool
 
+	jobUrl    string
 	taskCount int
 	savePath  string
 	userName  string
@@ -41,13 +43,14 @@ func init() {
 	flag.BoolVar(&listAllJobs, "L", false, "List all current jobs' information")
 
 	flag.BoolVar(&listSingle, "l", false, "List single job's information")
-	flag.BoolVar(&deleteSingle, "d", false, "Delete single job")
-	flag.StringVar(&id, "i", "", "job id")
-
+	flag.BoolVar(&deleteSingle, "d", false, "Delete a specified job")
+	flag.BoolVar(&startJob, "s", false, "Start a specified job")
+	flag.BoolVar(&stopJob, "S", false, "Stop a specified job")
 	flag.BoolVar(&queryProgress, "q", false, "Query progress of job by id")
 
 	flag.BoolVar(&printHelp, "h", false, "Printf help messages")
 
+	flag.StringVar(&jobUrl, "a", "", "To add a new job")
 	flag.IntVar(&taskCount, "c", 5, "Multi-task count for concurrent downloading")
 	flag.StringVar(&savePath, "o", "./", "The specified download file saved path")
 	flag.StringVar(&userName, "u", "", "username for authentication")
@@ -56,7 +59,7 @@ func init() {
 
 func usage() {
 	fmt.Printf("goget version: %s\n", Version)
-	fmt.Printf("Usage: goget [-L] [-l -i id] [-h] [[-o save_file_path] [-c task_count] [-u username] [-p passwd] remote_url]\n\n")
+	fmt.Printf("Usage: goget [-L] [-sSlq id] [-h] [-a remote_url [-o save_file_path] [-c task_count] [-u username] [-p passwd] ]\n\n")
 	fmt.Printf("Options:\n")
 	flag.PrintDefaults()
 }
@@ -75,7 +78,7 @@ func main() {
 	/*
 		print help messages
 	*/
-	if printHelp == true {
+	if printHelp {
 		usage()
 		return
 	}
@@ -88,7 +91,7 @@ func main() {
 	/*
 		List all jobs
 	*/
-	if listAllJobs == true {
+	if listAllJobs {
 		jobs, err := pm.GetAll()
 		if err != nil {
 			fmt.Println(err)
@@ -104,13 +107,8 @@ func main() {
 	/*
 		List single job with id
 	*/
-	if listSingle == true {
-		if id == "" {
-			usage()
-			return
-		}
-
-		job, err := pm.Get(id)
+	if listSingle {
+		job, err := pm.Get(flag.Arg(0))
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -121,21 +119,44 @@ func main() {
 	}
 
 	/*
-		Delete single job with id
+		Start single job with id
 	*/
-	if deleteSingle == true {
-		if id == "" {
-			usage()
-			return
-		}
-
-		err := pm.Delete(id)
+	if startJob {
+		err := pm.Start(flag.Arg(0))
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		fmt.Printf("Job-%s deleted\n", id)
+		fmt.Printf("Job-%s started\n", flag.Arg(0))
+		return
+	}
+
+	/*
+		Stop single job with id
+	*/
+	if stopJob {
+		err := pm.Stop(flag.Arg(0))
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Job-%s stopped\n", flag.Arg(0))
+		return
+	}
+
+	/*
+		Delete single job with id
+	*/
+	if deleteSingle == true {
+		err := pm.Delete(flag.Arg(0))
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Job-%s deleted\n", flag.Arg(0))
 		return
 	}
 
@@ -143,34 +164,29 @@ func main() {
 		Get the progress info for job with id
 	*/
 	if queryProgress == true {
-		if id == "" {
-			usage()
-			return
-		}
-
-		stat, err := pm.Progress(id)
+		stat, err := pm.Progress(flag.Arg(0))
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		fmt.Printf("Job-%s progress: %d/%d\n", id, stat.Done, stat.Size)
+		fmt.Printf("Job-%s progress: %d/%d\n", flag.Arg(0), stat.Done, stat.Size)
 		return
 	}
 
 	/*
-		Here we deal with the download job
+		Here we deal with the new job
 	*/
-	var urlStr string
-	if urlStr = flag.Arg(0); urlStr == "" {
+	if jobUrl == "" {
 		usage()
 		return
 	}
 
-	_, err = pm.Add(urlStr, savePath, userName, passwd, taskCount)
+	info, err := pm.Add(jobUrl, savePath, userName, passwd, taskCount)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	return
+
+	fmt.Printf("job-%s added\n", info.Id)
 }

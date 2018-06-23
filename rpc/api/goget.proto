@@ -47,6 +47,12 @@ service GoGet {
   //
   // Accepts a job id
   //
+  rpc Start(Id) returns (Empty) {}
+
+  // A client-to-server RPC.
+  //
+  // Accepts a job id
+  //
   rpc Stop(Id) returns (Empty) {}
 
   // A client-to-server RPC.

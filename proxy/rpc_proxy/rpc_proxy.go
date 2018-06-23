@@ -149,6 +149,22 @@ func (rm *RpcManager) Progress(id string) (*proxy.Stats, error) {
 	}, nil
 }
 
+func (rm *RpcManager) Start(id string) error {
+	conn, err := dialRPCServer(rm.addr, rm.dopts...)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ctx, _ := context.WithTimeout(context.Background(), DefaultTimeoutSec*time.Second)
+	_, err = pb.NewGoGetClient(conn).Start(ctx, &pb.Id{Uuid: id})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (rm *RpcManager) Stop(id string) error {
 	conn, err := dialRPCServer(rm.addr, rm.dopts...)
 	if err != nil {
