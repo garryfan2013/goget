@@ -32,7 +32,7 @@ func newFileStreamWriter() interface{} {
 }
 
 func (fs *FileStreamWriter) Open(path string) error {
-	fp, err := os.Create(path)
+	fp, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}

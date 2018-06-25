@@ -54,6 +54,7 @@ func (*PipelineControllerCreator) Scheme() string {
 type UrlRequestHandler struct {
 	src    source.StreamReader
 	sm     controller.StatsManager
+	count  int
 	tasks  []*ReaderTask
 	pos    int
 	notify chan<- *Roundtrip
@@ -72,35 +73,40 @@ func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- *Roundtrip
 	return &UrlRequestHandler{
 		src:    s,
 		sm:     sm,
-		tasks:  make([]*ReaderTask, n),
+		count:  n,
+		tasks:  make([]*ReaderTask, 0, n),
 		pos:    0,
 		notify: notify}
 }
 
 func (h *UrlRequestHandler) prepareTasksLayout(total int64) {
-	cnt := len(h.tasks)
+	cnt := h.count
 	size := total / int64(cnt)
 	ext := total % int64(cnt)
 
-	for i, _ := range h.tasks {
+	for i := 0; i < cnt; i++ {
 		blockSize := size
 		if i == cnt-1 {
 			blockSize += ext
 		}
 
-		h.tasks[i] = &ReaderTask{
+		h.tasks = append(h.tasks, &ReaderTask{
 			offset: int64(i) * size,
 			size:   blockSize,
-		}
+		})
 	}
 }
 
 func (h *UrlRequestHandler) restoreTasksLayout(stats []*controller.Stats) {
-	for i, _ := range h.tasks {
-		h.tasks[i] = &ReaderTask{
+	for i, v := range stats {
+		if v.Done == v.Size {
+			continue
+		}
+
+		h.tasks = append(h.tasks, &ReaderTask{
 			offset: stats[i].Offset + stats[i].Done,
 			size:   stats[i].Size - stats[i].Done,
-		}
+		})
 	}
 }
 
@@ -132,9 +138,13 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 	}
 
 	retrievedStats, retrievedTotal, retrievedDone := h.sm.Retrieve()
+	fmt.Printf("Retrieve: total=%d done=%d\n", retrievedTotal, retrievedDone)
+	for id, val := range retrievedStats {
+		fmt.Printf("Retrive: worker[%d] offset=%d size=%d done=%d\n", id, val.Offset, val.Size, val.Done)
+	}
 	if retrievedStats != nil {
-		if len(retrievedStats) != len(h.tasks) {
-			panic("UrlRequestHandler task count not equal retrieved stats count")
+		if len(retrievedStats) != h.count {
+			panic("UrlRequestHandler count not equal retrieved stats count")
 		}
 	}
 
@@ -165,6 +175,11 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 		done = retrievedDone
 	}
 
+	fmt.Printf("Tasks layout:\n")
+	for i, v := range h.tasks {
+		fmt.Printf("task[%d]: offset=%d size=%d\n", i, v.offset, v.size)
+	}
+
 	// Inform the controller of the stream information
 	// This is a RountdTrip message since we dont want to start workers until
 	// controller get the stream info
@@ -187,7 +202,7 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 
 func (h *UrlRequestHandler) Next(ctx context.Context) (interface{}, error) {
 	if h.pos < len(h.tasks) {
-		var tp *ReaderTask = h.tasks[h.pos]
+		tp := h.tasks[h.pos]
 		h.pos += 1
 		return tp, nil
 	}
@@ -272,7 +287,7 @@ func (h *ReaderTaskHandler) Next(ctx context.Context) (interface{}, error) {
 	}
 
 	if err == io.EOF {
-		if h.left != 0 {
+		if h.left > 0 {
 			panic("ReaderHandler.Next reach EOF, but got not enough data")
 		}
 		return task, util.ErrIteratorEOF
@@ -392,7 +407,6 @@ type PipelineController struct {
 	stats   []*controller.Stats     // This is the stats slice for all reader workers
 	total   int64                   // This indicates the total lengh of the file stream
 	done    int64                   // This indicates the finished bytes
-	wg      sync.WaitGroup          // To sync the cancel state with all workers
 }
 
 type streamInfo struct {
@@ -564,6 +578,17 @@ func (pc *PipelineController) Start() error {
 							data: nil,
 						}
 					}
+
+					/*
+						Probably this is a newly started job
+						neccessary to update the info to the upper level component
+					*/
+					if pc.done == 0 {
+						err := pc.sm.Update(pc.stats)
+						if err != nil {
+							fmt.Println(err)
+						}
+					}
 				}
 
 			// Stats updated
@@ -613,15 +638,12 @@ func (pc *PipelineController) Start() error {
 					}
 
 					/*
-						Since this is one of the go routines need to be wwaitted
+						Since this is one of the go routines need to be waitted
 						for completion, so have to start a new go routine to do the wait
 					*/
 					go func() {
-						if pc.cancel != nil {
-							pc.cancel()
-							wg.Wait()
-							fmt.Println("The workers are all quitted!")
-						}
+						pc.Stop()
+						pc.Close()
 					}()
 				}
 			// Ctrl channel
@@ -647,17 +669,21 @@ func (pc *PipelineController) Stop() error {
 		wg.Wait()
 	}
 
+	pc.snk.Close()
+	pc.src.Close()
 	return nil
 }
 
 func (pc *PipelineController) Close() {
-	if pc.cancel != nil {
-		pc.cancel()
-		wg.Wait()
-	}
-
-	pc.snk.Close()
-	pc.src.Close()
+	pc.cancel = nil
+	pc.src = nil
+	pc.snk = nil
+	pc.sm = nil
+	pc.configs = nil
+	pc.ctrl = nil
+	pc.done = 0
+	pc.total = 0
+	pc.stats = nil
 }
 
 func (pc *PipelineController) Progress() (*controller.Stats, error) {

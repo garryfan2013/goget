@@ -47,17 +47,6 @@ func init() {
 	proxy.Register(&JobManagerBuilder{})
 }
 
-type Job struct {
-	url      string
-	path     string
-	userName string
-	passwd   string
-
-	src  source.StreamReader
-	snk  sink.StreamWriter
-	ctrl controller.ProgressController
-}
-
 type JobDescriptor struct {
 	Status int
 	Ctrl   controller.ProgressController
@@ -228,7 +217,7 @@ func (jm *JobManager) Start(id string) error {
 		return proxy.ErrJobNotExists
 	}
 
-	if jd.Status == StatusRunning {
+	if jd.Status != StatusStopped {
 		return nil
 	}
 
@@ -298,6 +287,7 @@ func (jm *JobManager) Stop(id string) error {
 			return err
 		}
 
+		jd.Ctrl.Close()
 		jd.Status = StatusStopped
 	}
 
@@ -313,7 +303,10 @@ func (jm *JobManager) Delete(id string) error {
 		return ErrJobNotExist
 	}
 
-	jd.Ctrl.Close()
+	if jd.Status == StatusRunning {
+		jd.Ctrl.Close()
+	}
+
 	err := jm.jstor.Delete(id)
 	if err != nil {
 		return err
@@ -421,16 +414,22 @@ func (jsm *JobStatsManager) Retrieve() ([]*controller.Stats, int64, int64) {
 
 func (jsm *JobStatsManager) Update(stats []*controller.Stats) error {
 	workers := make([]*store.WorkerModel, len(stats))
+	var total, done int64
 	for i, v := range stats {
 		workers[i] = &store.WorkerModel{
 			Offset: v.Offset,
 			Size:   v.Size,
 			Done:   v.Done,
 		}
+
+		total += v.Size
+		done += v.Done
 	}
 
 	return jsm.jm.jstor.GetSwap(jsm.id, func(m *store.JobModel) (*store.JobModel, error) {
 		m.Workers = workers
+		m.Size = total
+		m.Done = done
 		return m, nil
 	})
 }
