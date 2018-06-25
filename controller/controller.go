@@ -19,6 +19,9 @@ func Register(c Creator) {
 	ctors[c.Scheme()] = c
 }
 
+/*
+	The factory interface
+*/
 type Creator interface {
 	Create() (ProgressController, error)
 	Scheme() string
@@ -28,12 +31,20 @@ type Creator interface {
 	The main interface for a controller
 */
 type Controller interface {
+	/*
+		Open a controller
+		Allocate the resources needed for the controller
+	*/
 	Open(src source.StreamReader, sink sink.StreamWriter, sm StatsManager) error
 
+	/*
+		Method to set parameters
+	*/
 	SetConfig(key string, value string)
 
 	/*
 		Start the controller
+		A controller couldnt be started without Openning it first
 	*/
 	Start() error
 

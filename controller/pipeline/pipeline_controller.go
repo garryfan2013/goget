@@ -404,7 +404,7 @@ type PipelineController struct {
 	ctrl    chan *Roundtrip         // The ctrl channel for pipeline
 	cancel  context.CancelFunc      // Cancel function
 	sm      controller.StatsManager // Manager the worker stats
-	stats   []*controller.Stats     // This is the stats slice for all reader workers
+	stats   []*controller.Stats     // This is the stats slice for all workers
 	total   int64                   // This indicates the total lengh of the file stream
 	done    int64                   // This indicates the finished bytes
 }
