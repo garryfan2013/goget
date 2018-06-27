@@ -126,6 +126,14 @@ func PostJobActionHandler(w http.ResponseWriter, r *http.Request, d interface{})
 			return
 		}
 	}
+
+	if action.Action == model.ActionStart {
+		err = pm.Start(id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 }
 
 func GetJobProgressHandler(w http.ResponseWriter, r *http.Request, d interface{}) {
