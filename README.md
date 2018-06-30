@@ -21,7 +21,7 @@ cd ./cli
 go build
 </pre>
 
-### Server damon
+### Server daemon
 
 <pre>
 ./goget
