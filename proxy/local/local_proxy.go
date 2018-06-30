@@ -26,12 +26,6 @@ const (
 	DefaultTaskCount = 5
 )
 
-const (
-	StatusStopped = iota
-	StatusRunning
-	StatusDone
-)
-
 var (
 	instance *JobManager
 	once     sync.Once
@@ -98,7 +92,7 @@ func (jmb *JobManagerBuilder) Name() string {
 func (jm *JobManager) load() error {
 	err := jm.jstor.ForEach(func(model *store.JobModel) error {
 		jm.jds[model.Id] = &JobDescriptor{
-			Status: StatusStopped,
+			Status: proxy.JobStatusStopped,
 		}
 		return nil
 	})
@@ -175,10 +169,11 @@ func (jm *JobManager) start(model *store.JobModel) (controller.ProgressControlle
 		return nil, err
 	}
 
-	if err = ctrl.Open(src, snk, &JobStatsManager{
+	jsm := &JobStatsManager{
 		id: model.Id,
 		jm: jm,
-	}); err != nil {
+	}
+	if err = ctrl.Open(src, snk, jsm, jsm); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -217,7 +212,7 @@ func (jm *JobManager) Start(id string) error {
 		return proxy.ErrJobNotExists
 	}
 
-	if jd.Status != StatusStopped {
+	if jd.Status != proxy.JobStatusStopped {
 		return nil
 	}
 
@@ -231,7 +226,7 @@ func (jm *JobManager) Start(id string) error {
 		return err
 	}
 
-	jd.Status = StatusRunning
+	jd.Status = proxy.JobStatusRunning
 	jd.Ctrl = ctrl
 	return nil
 }
@@ -262,7 +257,7 @@ func (jm *JobManager) Add(urlStr string, filePath string, uname string, passwd s
 	}
 
 	jm.jds[id] = &JobDescriptor{
-		Status: StatusStopped,
+		Status: proxy.JobStatusStopped,
 	}
 
 	return &proxy.JobInfo{
@@ -281,14 +276,14 @@ func (jm *JobManager) Stop(id string) error {
 		return ErrJobNotExist
 	}
 
-	if jd.Status == StatusRunning {
+	if jd.Status == proxy.JobStatusRunning {
 		err := jd.Ctrl.Stop()
 		if err != nil {
 			return err
 		}
 
 		jd.Ctrl.Close()
-		jd.Status = StatusStopped
+		jd.Status = proxy.JobStatusStopped
 	}
 
 	return nil
@@ -303,7 +298,7 @@ func (jm *JobManager) Delete(id string) error {
 		return ErrJobNotExist
 	}
 
-	if jd.Status == StatusRunning {
+	if jd.Status == proxy.JobStatusRunning {
 		jd.Ctrl.Close()
 	}
 
@@ -325,7 +320,7 @@ func (jm *JobManager) done(id string) error {
 		return ErrJobNotExist
 	}
 
-	jd.Status = StatusDone
+	jd.Status = proxy.JobStatusDone
 	return nil
 }
 
@@ -338,7 +333,7 @@ func (jm *JobManager) Progress(id string) (*proxy.Stats, error) {
 		return nil, ErrJobNotExist
 	}
 
-	if jd.Status != StatusRunning {
+	if jd.Status != proxy.JobStatusRunning {
 		model, err := jm.jstor.Get(id)
 		if err != nil {
 			return nil, err
@@ -363,8 +358,9 @@ func (jm *JobManager) Progress(id string) (*proxy.Stats, error) {
 			done += v.Done
 		}
 		return &proxy.Stats{
-			Size: total,
-			Done: done,
+			Status: jd.Status,
+			Size:   total,
+			Done:   done,
 		}, nil
 	}
 
@@ -377,8 +373,9 @@ func (jm *JobManager) Progress(id string) (*proxy.Stats, error) {
 	}
 
 	return &proxy.Stats{
-		Size: stats.Size,
-		Done: stats.Done,
+		Status: jd.Status,
+		Size:   stats.Size,
+		Done:   stats.Done,
 	}, nil
 }
 
@@ -390,7 +387,7 @@ type JobStatsManager struct {
 /*
 	Interface controller.StatsManager implementation
 */
-func (jsm *JobStatsManager) Retrieve() ([]*controller.Stats, int64, int64) {
+func (jsm *JobStatsManager) Retrieve() ([]*controller.WorkerStats, int64, int64) {
 	model, err := jsm.jm.jstor.Get(jsm.id)
 	if err != nil {
 		return nil, 0, 0
@@ -400,9 +397,9 @@ func (jsm *JobStatsManager) Retrieve() ([]*controller.Stats, int64, int64) {
 		return nil, 0, 0
 	}
 
-	stats := make([]*controller.Stats, len(model.Workers))
+	stats := make([]*controller.WorkerStats, len(model.Workers))
 	for i, v := range model.Workers {
-		stats[i] = &controller.Stats{
+		stats[i] = &controller.WorkerStats{
 			Offset: v.Offset,
 			Size:   v.Size,
 			Done:   v.Done,
@@ -412,7 +409,7 @@ func (jsm *JobStatsManager) Retrieve() ([]*controller.Stats, int64, int64) {
 	return stats, int64(model.Size), int64(model.Done)
 }
 
-func (jsm *JobStatsManager) Update(stats []*controller.Stats) error {
+func (jsm *JobStatsManager) Update(stats []*controller.WorkerStats) error {
 	workers := make([]*store.WorkerModel, len(stats))
 	var total, done int64
 	for i, v := range stats {

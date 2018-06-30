@@ -48,12 +48,18 @@ func (*PipelineControllerCreator) Scheme() string {
 	return controller.SchemePipeline
 }
 
+type workerStats struct {
+	offset int64
+	size   int64
+	done   int64
+}
+
 // ReaderTaskGenerator-AsyncExecutor
 // Input(string): download url
 // Output(ReaderTaskIterator): Iterator for reader task
 type UrlRequestHandler struct {
 	src    source.StreamReader
-	sm     controller.StatsManager
+	sm     controller.WorkerStatsManager // Provided by up level component for workers' stats related operation
 	count  int
 	tasks  []*ReaderTask
 	pos    int
@@ -69,7 +75,7 @@ type ReaderTask struct {
 	size   int64
 }
 
-func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- *Roundtrip, sm controller.StatsManager) *UrlRequestHandler {
+func NewUrlRequestHandler(s source.StreamReader, n int, notify chan<- *Roundtrip, sm controller.WorkerStatsManager) *UrlRequestHandler {
 	return &UrlRequestHandler{
 		src:    s,
 		sm:     sm,
@@ -97,7 +103,7 @@ func (h *UrlRequestHandler) prepareTasksLayout(total int64) {
 	}
 }
 
-func (h *UrlRequestHandler) restoreTasksLayout(stats []*controller.Stats) {
+func (h *UrlRequestHandler) restoreTasksLayout(stats []*controller.WorkerStats) {
 	for i, v := range stats {
 		if v.Done == v.Size {
 			continue
@@ -154,14 +160,14 @@ func (h *UrlRequestHandler) Handle(ctx context.Context, arg interface{}) (interf
 		}
 	}
 
-	var stats []*controller.Stats
+	var stats []*controller.WorkerStats
 	var done int64
 	if retrievedStats == nil {
 		// This is a probably fresh task
 		h.prepareTasksLayout(total)
-		stats = make([]*controller.Stats, len(h.tasks))
+		stats = make([]*controller.WorkerStats, len(h.tasks))
 		for i, v := range h.tasks {
-			stats[i] = &controller.Stats{
+			stats[i] = &controller.WorkerStats{
 				Offset: v.offset,
 				Size:   v.size,
 				Done:   0,
@@ -398,33 +404,36 @@ type Roundtrip struct {
 
 // PiplelineController constructor
 type PipelineController struct {
-	configs map[string]string       // config params map
-	src     source.StreamReader     // source
-	snk     sink.StreamWriter       // sink
-	ctrl    chan *Roundtrip         // The ctrl channel for pipeline
-	cancel  context.CancelFunc      // Cancel function
-	sm      controller.StatsManager // Manager the worker stats
-	stats   []*controller.Stats     // This is the stats slice for all workers
-	total   int64                   // This indicates the total lengh of the file stream
-	done    int64                   // This indicates the finished bytes
+	configs map[string]string             // config params map
+	src     source.StreamReader           // source
+	snk     sink.StreamWriter             // sink
+	ctrl    chan *Roundtrip               // The ctrl channel for pipeline
+	cancel  context.CancelFunc            // Cancel function
+	sm      controller.WorkerStatsManager // Provided by up level component for workers' stat related operation
+	nf      controller.Notifier           // Provided by up level component for controller to deliver specific events
+	stats   []*controller.WorkerStats     // This is the stats slice for all workers
+	rate    int64                         // The download speed for whole job
+	total   int64                         // This indicates the total lengh of the file stream
+	done    int64                         // This indicates the finished bytes
 }
 
 type streamInfo struct {
 	total int64
 	done  int64
-	stats []*controller.Stats
+	stats []*controller.WorkerStats
 }
 
 func newPipelineController() interface{} {
 	return new(PipelineController)
 }
 
-func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter, sm controller.StatsManager) error {
+func (pc *PipelineController) Open(c source.StreamReader, h sink.StreamWriter, sm controller.WorkerStatsManager, nf controller.Notifier) error {
 	pc.configs = make(map[string]string)
 	pc.src = c
 	pc.snk = h
 	pc.ctrl = make(chan *Roundtrip)
 	pc.sm = sm
+	pc.nf = nf
 
 	return nil
 }
@@ -440,9 +449,9 @@ func (pc *PipelineController) handleRoudTripMessage(rt *Roundtrip) {
 		rt.resp <- &Message{
 			cmd: rt.msg.cmd,
 			data: &controller.Stats{
-				Offset: 0,
-				Size:   pc.total,
-				Done:   pc.done,
+				Rate: pc.rate,
+				Size: pc.total,
+				Done: pc.done,
 			},
 		}
 		break
@@ -614,7 +623,7 @@ func (pc *PipelineController) Start() error {
 
 				// Here the whole job's completed, deal with the rest request and quit
 				if pc.done == pc.total {
-					err := pc.sm.Notify(controller.NotifyEventDone)
+					err := pc.nf.Notify(controller.NotifyEventDone)
 					if err != nil {
 						fmt.Println(err)
 					}

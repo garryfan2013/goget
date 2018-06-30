@@ -11,6 +11,12 @@ const (
 	ProxyREST  = "restProxy"
 )
 
+const (
+	JobStatusStopped = iota
+	JobStatusRunning
+	JobStatusDone
+)
+
 var (
 	builders = make(map[string]Builder)
 
@@ -18,8 +24,10 @@ var (
 )
 
 type Stats struct {
-	Size int64
-	Done int64
+	Status int
+	Rate   int
+	Size   int64
+	Done   int64
 }
 
 type JobInfo struct {

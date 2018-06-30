@@ -35,7 +35,7 @@ type Controller interface {
 		Open a controller
 		Allocate the resources needed for the controller
 	*/
-	Open(src source.StreamReader, sink sink.StreamWriter, sm StatsManager) error
+	Open(src source.StreamReader, sink sink.StreamWriter, sm WorkerStatsManager, nf Notifier) error
 
 	/*
 		Method to set parameters
@@ -62,9 +62,15 @@ type Controller interface {
 }
 
 type Stats struct {
-	Offset int64 // The offset for this worker to start data download
-	Size   int64 // The size of data to download
-	Done   int64 // The number of bytes has been downloaded
+	Rate int64 // The stream transport speed rate for the whole job
+	Size int64 // The size of data to download for the whole job
+	Done int64 // The number of bytes has been downloaded for the whole job
+}
+
+type WorkerStats struct {
+	Offset int64 // The offset to read data for the specified worker
+	Size   int64 // The size to read for the specified worker
+	Done   int64 // The number of bytes has been downloaded for the specified worker
 }
 
 const (
@@ -77,7 +83,7 @@ const (
 	This interface is likely implemented by a uppper level component
 	which operates and manages the controller
 */
-type StatsManager interface {
+type WorkerStatsManager interface {
 	/*
 		Retrieve return the stats information of current job's workers
 
@@ -87,15 +93,17 @@ type StatsManager interface {
 		For job that's done or stopped, the Retrieve returns the last status
 		of the job workers' information
 	*/
-	Retrieve() ([]*Stats, int64, int64)
+	Retrieve() ([]*WorkerStats, int64, int64)
 
 	/*
 		Since the controller does know the exact status of current job,
 		the update method provide a way for controller component to update the
 		status information of job's workers
 	*/
-	Update([]*Stats) error
+	Update([]*WorkerStats) error
+}
 
+type Notifier interface {
 	/*
 		Notify the upper component that some event's occured
 		the event is one of the NotifyEventXxxx consts

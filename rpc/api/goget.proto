@@ -102,11 +102,17 @@ message Id {
 
 // A Stats consists of progress information for a specified job
 message Stats {
-  // The name of the feature.
-  int64 size = 1;
+  // The status of the job
+  int64 status = 1;
 
-  // The point where the feature is detected.
-  int64 done = 2;
+  // The data transport speed rate of the job 
+  int64 rate = 2;
+ 
+  // The downloading file size of the job.
+  int64 size = 3;
+
+  // The number of bytes already been fetched.
+  int64 done = 4;
 }
 
 // A empty message means void

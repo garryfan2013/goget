@@ -144,8 +144,10 @@ func (rm *RpcManager) Progress(id string) (*proxy.Stats, error) {
 	}
 
 	return &proxy.Stats{
-		Size: stat.Size,
-		Done: stat.Done,
+		Rate:   int(stat.Rate),
+		Status: int(stat.Status),
+		Size:   stat.Size,
+		Done:   stat.Done,
 	}, nil
 }
 
