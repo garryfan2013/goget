@@ -48,12 +48,6 @@ func (*PipelineControllerCreator) Scheme() string {
 	return controller.SchemePipeline
 }
 
-type workerStats struct {
-	offset int64
-	size   int64
-	done   int64
-}
-
 // ReaderTaskGenerator-AsyncExecutor
 // Input(string): download url
 // Output(ReaderTaskIterator): Iterator for reader task
