@@ -170,7 +170,7 @@ func main() {
 			return
 		}
 
-		fmt.Printf("Job-%s progress: %d/%d\n", flag.Arg(0), stat.Done, stat.Size)
+		fmt.Printf("Job-%s progress: %d %d %d/%d\n", flag.Arg(0), stat.Status, stat.Rate, stat.Done, stat.Size)
 		return
 	}
 

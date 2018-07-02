@@ -152,8 +152,10 @@ func GetJobProgressHandler(w http.ResponseWriter, r *http.Request, d interface{}
 	}
 
 	err = json.NewEncoder(w).Encode(&model.Stats{
-		Size: uint64(nativeStat.Size),
-		Done: uint64(nativeStat.Done),
+		Rate:   uint64(nativeStat.Rate),
+		Status: int64(nativeStat.Status),
+		Size:   uint64(nativeStat.Size),
+		Done:   uint64(nativeStat.Done),
 	})
 	if err != nil {
 		fmt.Println(err)

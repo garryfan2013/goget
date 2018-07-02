@@ -83,8 +83,10 @@ func (s *RpcServer) Progress(ctx context.Context, id *pb.Id) (*pb.Stats, error) 
 	}
 
 	return &pb.Stats{
-		Size: stats.Size,
-		Done: stats.Done,
+		Rate:   int64(stats.Rate),
+		Status: int64(stats.Status),
+		Size:   stats.Size,
+		Done:   stats.Done,
 	}, nil
 }
 

@@ -91,6 +91,13 @@ func (jmb *JobManagerBuilder) Name() string {
 */
 func (jm *JobManager) load() error {
 	err := jm.jstor.ForEach(func(model *store.JobModel) error {
+		if model.Size == model.Done {
+			jm.jds[model.Id] = &JobDescriptor{
+				Status: proxy.JobStatusDone,
+			}
+			return nil
+		}
+
 		jm.jds[model.Id] = &JobDescriptor{
 			Status: proxy.JobStatusStopped,
 		}

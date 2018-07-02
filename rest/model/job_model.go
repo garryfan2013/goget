@@ -24,9 +24,10 @@ type Job struct {
 }
 
 type Stats struct {
-	Rate uint64 `json:"rate,omitempty"`
-	Size uint64 `json:"size"`
-	Done uint64 `json:"done"`
+	Rate   uint64 `json:"rate"`
+	Status int64  `json:"status"`
+	Size   uint64 `json:"size"`
+	Done   uint64 `json:"done"`
 }
 
 type JobAction struct {
