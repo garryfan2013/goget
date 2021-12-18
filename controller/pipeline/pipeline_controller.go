@@ -601,7 +601,7 @@ func (pc *PipelineController) Start() error {
 					panic("counterCh ret cant type switch to writeInfo")
 				}
 
-				for i, _ := range pc.stats {
+				for i := range pc.stats {
 					if pc.stats[i].Offset+pc.stats[i].Size >= wi.offset+wi.size {
 						if pc.stats[i].Offset <= wi.offset {
 							pc.stats[i].Done += wi.size

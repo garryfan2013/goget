@@ -44,8 +44,8 @@ func (sb *StaticBuffer) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (sb *StaticBuffer) ReadFrom(r io.Reader) (int, error) {
-	var totalRead int
+func (sb *StaticBuffer) ReadFrom(r io.Reader) (int64, error) {
+	var totalRead int64
 
 	if sb.W == sb.Cap() {
 		return 0, nil
@@ -58,7 +58,7 @@ func (sb *StaticBuffer) ReadFrom(r io.Reader) (int, error) {
 		}
 
 		sb.W += int64(n)
-		totalRead += n
+		totalRead += int64(n)
 
 		if err == io.EOF {
 			return totalRead, err
@@ -95,7 +95,7 @@ func (sb *StaticBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func (sb *StaticBuffer) WriteTo(w io.Writer) (int, error) {
+func (sb *StaticBuffer) WriteTo(w io.Writer) (int64, error) {
 	l := int(sb.W - sb.R)
 	n, err := w.Write(sb.Buf[sb.R:sb.W])
 	if n > l {
@@ -105,16 +105,16 @@ func (sb *StaticBuffer) WriteTo(w io.Writer) (int, error) {
 	sb.R += int64(n)
 
 	if err != nil {
-		return n, err
+		return int64(n), err
 	}
 
 	if n != l {
-		return n, io.ErrShortWrite
+		return int64(n), io.ErrShortWrite
 	}
 
 	// All the data's been written to writer
 	sb.Reset()
-	return n, nil
+	return int64(n), nil
 }
 
 func (sb *StaticBuffer) Cap() int64 {

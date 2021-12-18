@@ -78,7 +78,8 @@ func NewFanInAsyncExecutor(h Handler) *FanInAsyncExecutor {
 func (f *FanInAsyncExecutor) Run(ctx context.Context,
 	in []<-chan interface{}, errs []<-chan error) (<-chan interface{}, <-chan error, error) {
 
-	cancelCtx, _ := context.WithCancel(ctx)
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	outErrCh := make(chan error)
 	outDataCh := make(chan interface{}, DefaultChannelSize)
 
@@ -153,10 +154,10 @@ func (f *FanOutAsyncExecutor) Run(ctx context.Context,
 	errChs := make([]<-chan error, 0, len(executors))
 
 	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	for _, e := range executors {
 		ch1, ch2, err := e.Run(cancelCtx, in)
 		if err != nil {
-			cancel()
 			return nil, nil, err
 		}
 
@@ -180,7 +181,9 @@ func NewAsyncExecutor(h Handler) *AsyncExecutor {
 }
 
 func (e *AsyncExecutor) Run(ctx context.Context, in <-chan interface{}) (<-chan interface{}, <-chan error, error) {
-	cancelCtx, _ := context.WithCancel(ctx)
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	outErrCh := make(chan error)
 	outDataCh := make(chan interface{}) //, DefaultChannelSize)
 
