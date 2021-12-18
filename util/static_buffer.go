@@ -35,11 +35,6 @@ func (sb *StaticBuffer) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	copyLen := int64(len(p))
-	if dataLen < copyLen {
-		copyLen = dataLen
-	}
-
 	n := copy(p, sb.Buf[sb.R:sb.W])
 	sb.R += int64(n)
 	if sb.R == sb.W {
@@ -88,11 +83,6 @@ func (sb *StaticBuffer) Write(p []byte) (int, error) {
 
 	if left == 0 {
 		return 0, ErrNotEnoughSpace
-	}
-
-	copyLen := int64(len(p))
-	if copyLen > left {
-		copyLen = left
 	}
 
 	n := copy(sb.Buf[sb.W:], p)

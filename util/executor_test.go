@@ -18,6 +18,14 @@ func (a *Accumulator) Accum(n int) {
 	a.Cnt += 1
 }
 
+func (a *Accumulator) Init() error {
+	return nil
+}
+
+func (a *Accumulator) Finish() error {
+	return nil
+}
+
 func (a *Accumulator) Handle(ctx context.Context, args interface{}) (interface{}, error) {
 	n, ok := args.(int)
 	if !ok {
@@ -36,7 +44,7 @@ func TestAsyncExecutor(t *testing.T) {
 	ex := NewAsyncExecutor(acc)
 
 	argCh := make(chan interface{})
-	resCh, errCh := ex.Run(ctx, argCh)
+	resCh, errCh, _ := ex.Run(ctx, argCh)
 
 	go func() {
 		for i := 0; i < 10; i++ {
@@ -100,6 +108,14 @@ func (i *IterType) Next(ctx context.Context) (interface{}, error) {
 	return nil, ErrIteratorEOF
 }
 
+func (m *IterHandler) Init() error {
+	return nil
+}
+
+func (m *IterHandler) Finish() error {
+	return nil
+}
+
 func (m *IterHandler) Handle(ctx context.Context, args interface{}) (interface{}, error) {
 	in, ok := args.(int)
 	if !ok {
@@ -118,7 +134,7 @@ func TestAsyncExecutorWithIterator(t *testing.T) {
 	ex := NewAsyncExecutor(handler)
 
 	in := make(chan interface{})
-	out, err := ex.Run(ctx, in)
+	out, err, _ := ex.Run(ctx, in)
 
 	go func() {
 		in <- 18
@@ -145,6 +161,14 @@ type MultiType struct{}
 type Args struct {
 	N int
 	F int
+}
+
+func (m *MultiType) Init() error {
+	return nil
+}
+
+func (m *MultiType) Finish() error {
+	return nil
 }
 
 func (m *MultiType) Handle(ctx context.Context, args interface{}) (interface{}, error) {
@@ -183,7 +207,7 @@ func TestFanOutAsyncExecutor(t *testing.T) {
 		exSlice[i] = NewAsyncExecutor(new(MultiType))
 	}
 
-	out, err := ex.Run(ctx, in, exSlice)
+	out, err, _ := ex.Run(ctx, in, exSlice)
 
 	go func() {
 		in <- Args{100, 10}
@@ -236,7 +260,7 @@ func TestFanInAsyncExecutor(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	ex := NewFanInAsyncExecutor()
+	ex := NewFanInAsyncExecutor(nil)
 
 	in := make([]chan interface{}, fanInCnt)
 	errs := make([]chan error, fanInCnt)
@@ -252,7 +276,7 @@ func TestFanInAsyncExecutor(t *testing.T) {
 		errsRead[i] = errs[i]
 	}
 
-	out, err := ex.Run(ctx, inRead, errsRead)
+	out, err, _ := ex.Run(ctx, inRead, errsRead)
 
 	go func() {
 		for i := 0; i < 100; i++ {

@@ -7,18 +7,14 @@ import (
 )
 
 var (
-	ErrInvalidUUIDString = errors.New("Invalid uuid string format")
+	ErrInvalidUUIDString = errors.New("invalid uuid string format")
 	InvalidUUID          = UUID{0}
 )
 
 type UUID uuid.UUID
 
 func UUIDGen() (UUID, error) {
-	id, err := uuid.NewV4()
-	if err != nil {
-		return InvalidUUID, err
-	}
-
+	id := uuid.NewV4()
 	return UUID(id), nil
 }
 
@@ -36,10 +32,6 @@ func UUIDFromString(s string) (UUID, error) {
 }
 
 func UUIDStringGen() (string, error) {
-	id, err := uuid.NewV4()
-	if err != nil {
-		return "", err
-	}
-
+	id := uuid.NewV4()
 	return id.String(), nil
 }

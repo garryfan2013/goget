@@ -51,7 +51,7 @@ func TestWriteRead(t *testing.T) {
 	}
 
 	// Read empty buffer
-	n, err = sb.Read(p1)
+	_, err = sb.Read(p1)
 	if err != io.EOF {
 		t.Error("Should get EOF")
 	}
